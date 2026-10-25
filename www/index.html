@@ -1732,7 +1732,6 @@ async function main() {
   bindUI();
 
   await Store.init();
-  await SmsBridge.init();
 
   SmsBridge.on('smsSent', async d => {
     if (!d || !d.id) return;
@@ -1761,6 +1760,7 @@ async function main() {
   });
 
   SmsBridge.on('smsReceived', handleIncoming);
+  await SmsBridge.init(); /*bridge-after-handlers*/
 
   await refreshStatus();
   await loadSims();
