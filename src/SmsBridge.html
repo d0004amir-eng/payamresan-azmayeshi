@@ -32,7 +32,7 @@ const SmsBridge = (() => {
       try { platform = typeof cap.getPlatform === 'function' ? cap.getPlatform() : 'web'; } catch (e) { platform = 'web'; }
       const p = cap.Plugins && cap.Plugins.SmsLab;
       const registered = typeof cap.isPluginAvailable === 'function' ? cap.isPluginAvailable('SmsLab') : !!p;
-      if (p && registered) plugin = p;
+      if (registered) { try { plugin = typeof cap.registerPlugin === 'function' ? cap.registerPlugin('SmsLab') : p; } catch (e) { plugin = p || null; } }
     }
   }
 
