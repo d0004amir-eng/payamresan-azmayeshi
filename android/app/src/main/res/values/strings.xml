@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Payamresan Azmayeshi</string>
+    <string name="title_activity_main">Payamresan Azmayeshi</string>
+    <string name="package_name">com.example.payamresan</string>
+    <string name="custom_url_scheme">com.example.payamresan</string>
+</resources>
