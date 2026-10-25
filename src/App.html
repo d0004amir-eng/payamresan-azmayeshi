@@ -559,6 +559,12 @@ async function renderSettings() {
   }
   smsRows.push(['ذخیره‌سازی', Store.persistent ? 'پایدار (IndexedDB)' : 'موقت (پس از بستن از بین می‌رود)']);
 
+  const diag = await SmsBridge.diagnostics();
+  if (diag) {
+    smsRows.push(['اجرای گیرندهٔ پیامک (از زمان نصب)', Util.toFa(diag.receiverRuns)]);
+    smsRows.push(['آخرین اجرای گیرنده', diag.receiverLast ? Util.formatDate(diag.receiverLast) + ' ' + Util.formatTime(diag.receiverLast) : 'هرگز']);
+    if (diag.receiverErrors) smsRows.push(['خطای گیرنده', Util.toFa(diag.receiverErrors)]);
+  }
   const box = $('sms-detail');
   box.replaceChildren(dl(smsRows));
   const miss = missingPerms();

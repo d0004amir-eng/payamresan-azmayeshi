@@ -1023,7 +1023,12 @@ const SmsBridge = (() => {
     return detail ? base + ' (' + detail + ')' : base;
   }
 
-  return { init, on, isNative, capabilities, checkPermissions, requestPermissions,
+  async function diagnostics() {
+    if (!plugin) return null;
+    try { return await plugin.getDiagnostics(); } catch (e) { Util.logError('diagnostics', e); return null; }
+  }
+
+  return { init, on, isNative, diagnostics, capabilities, checkPermissions, requestPermissions,
            getSims, sendSms, drainReceived, pickContact, canPickContact,
            deviceInfo, explainError };
 })();
@@ -1590,6 +1595,12 @@ async function renderSettings() {
   }
   smsRows.push(['ذخیره‌سازی', Store.persistent ? 'پایدار (IndexedDB)' : 'موقت (پس از بستن از بین می‌رود)']);
 
+  const diag = await SmsBridge.diagnostics();
+  if (diag) {
+    smsRows.push(['اجرای گیرندهٔ پیامک (از زمان نصب)', Util.toFa(diag.receiverRuns)]);
+    smsRows.push(['آخرین اجرای گیرنده', diag.receiverLast ? Util.formatDate(diag.receiverLast) + ' ' + Util.formatTime(diag.receiverLast) : 'هرگز']);
+    if (diag.receiverErrors) smsRows.push(['خطای گیرنده', Util.toFa(diag.receiverErrors)]);
+  }
   const box = $('sms-detail');
   box.replaceChildren(dl(smsRows));
   const miss = missingPerms();

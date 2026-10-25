@@ -167,7 +167,12 @@ const SmsBridge = (() => {
     return detail ? base + ' (' + detail + ')' : base;
   }
 
-  return { init, on, isNative, capabilities, checkPermissions, requestPermissions,
+  async function diagnostics() {
+    if (!plugin) return null;
+    try { return await plugin.getDiagnostics(); } catch (e) { Util.logError('diagnostics', e); return null; }
+  }
+
+  return { init, on, isNative, diagnostics, capabilities, checkPermissions, requestPermissions,
            getSims, sendSms, drainReceived, pickContact, canPickContact,
            deviceInfo, explainError };
 })();

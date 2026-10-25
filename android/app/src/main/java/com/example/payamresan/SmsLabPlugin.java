@@ -42,6 +42,7 @@ import org.json.JSONObject;
 public class SmsLabPlugin extends Plugin {
 
     private static SmsLabPlugin instance;
+    private static volatile boolean resumed = false;
 
     @Override
     public void load() {
@@ -50,8 +51,14 @@ public class SmsLabPlugin extends Plugin {
 
     @Override
     protected void handleOnResume() {
+        resumed = true;
         flushResults();
         flushReceived();
+    }
+
+    @Override
+    protected void handleOnPause() {
+        resumed = false;
     }
 
     @Override
@@ -62,12 +69,12 @@ public class SmsLabPlugin extends Plugin {
     /** از گیرنده‌ها صدا زده می‌شود تا اگر رابط کاربری زنده است، رویداد را فوراً بفرستد. */
     static void ping() {
         SmsLabPlugin p = instance;
-        if (p != null) p.flushResults();
+        if (p != null && resumed) p.flushResults();
     }
 
     static void pingReceived() {
         SmsLabPlugin p = instance;
-        if (p != null) p.flushReceived();
+        if (p != null && resumed) p.flushReceived();
     }
 
     private void flushResults() {
@@ -325,6 +332,17 @@ public class SmsLabPlugin extends Plugin {
             case TelephonyManager.SIM_STATE_NETWORK_LOCKED: return "network_locked";
             default: return "unknown";
         }
+    }
+
+    @PluginMethod
+    public void getDiagnostics(PluginCall call) {
+        android.content.SharedPreferences d = getContext().getSharedPreferences("smslab_diag", Context.MODE_PRIVATE);
+        JSObject ret = new JSObject();
+        ret.put("receiverRuns", d.getInt("recv_count", 0));
+        ret.put("receiverLast", d.getLong("recv_last", 0L));
+        ret.put("receiverErrors", d.getInt("recv_err", 0));
+        ret.put("foreground", resumed);
+        call.resolve(ret);
     }
 
     @PluginMethod
