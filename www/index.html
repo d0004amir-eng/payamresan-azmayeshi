@@ -1,38 +1,1788 @@
-<!doctype html>
+[200~<!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
   <title>پیام‌رسان آزمایشی</title>
   <style>
-    body {
-      font-family: sans-serif;
-      background: #f0fdfa;
-      color: #134e4a;
-      padding: 24px;
-      text-align: center;
-    }
-    .card {
-      background: white;
-      padding: 24px;
-      border-radius: 18px;
-      box-shadow: 0 4px 18px #0001;
-    }
-    button {
-      background: #0f766e;
-      color: white;
-      border: 0;
-      border-radius: 12px;
-      padding: 14px 22px;
-      font-size: 16px;
-    }
-  </style>
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #eef1f4;
+  --text: #1c2530;
+  --muted: #6b7785;
+  --border: #dde2e8;
+  --primary: #0f766e;
+  --primary-dark: #0b5a54;
+  --on-primary: #ffffff;
+  --bubble-out: #d7efe9;
+  --bubble-in: #ffffff;
+  --danger: #b42318;
+  --danger-bg: #fdecea;
+  --warn: #9a6700;
+  --warn-bg: #fff4d6;
+  --ok: #1a7f4b;
+  --ok-bg: #e3f6ec;
+  --radius: 14px;
+  --shadow: 0 1px 3px rgba(16, 24, 40, .12);
+  --font: Tahoma, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11171d;
+    --surface: #1a222b;
+    --surface-2: #232d38;
+    --text: #e7ecf1;
+    --muted: #93a0ae;
+    --border: #2d3947;
+    --primary: #2dd4bf;
+    --primary-dark: #14b8a6;
+    --on-primary: #06201c;
+    --bubble-out: #14423d;
+    --bubble-in: #232d38;
+    --danger: #ff8a80;
+    --danger-bg: #3a1f1d;
+    --warn: #f5c451;
+    --warn-bg: #3a3017;
+    --ok: #5ddc9a;
+    --ok-bg: #173a2a;
+    --shadow: none;
+  }
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+button, input, textarea, select { font-family: inherit; font-size: inherit; color: inherit; }
+button { cursor: pointer; }
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+
+/* ===== آیکون‌ها ===== */
+.ic { width: 24px; height: 24px; fill: currentColor; flex: none; }
+.ic-sm { width: 18px; height: 18px; }
+.ic-xl { width: 56px; height: 56px; opacity: .35; }
+.flip { transform: scaleX(-1); }
+
+/* ===== چیدمان کلی ===== */
+#app {
+  display: flex;
+  height: 100%;
+  height: 100dvh;
+  max-width: 1200px;
+  margin: 0 auto;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.pane { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+.pane-list { flex: 1; border-inline-end: 1px solid var(--border); position: relative; }
+.pane-main { flex: 1; background: var(--bg); }
+
+/* موبایل: در هر لحظه فقط یک ستون */
+@media (max-width: 899px) {
+  #app[data-view="home"] .pane-main { display: none; }
+  #app:not([data-view="home"]) .pane-list { display: none; }
+}
+
+/* دسکتاپ: دو ستون کنار هم */
+@media (min-width: 900px) {
+  .pane-list { flex: 0 0 380px; }
+  #btn-chat-back, #btn-new-back, #btn-settings-back { display: none; }
+}
+
+/* ===== صفحه‌ها ===== */
+.screen { display: none; flex-direction: column; height: 100%; min-height: 0; }
+.screen.active { display: flex; }
+.screen.empty { align-items: center; justify-content: center; gap: 8px; color: var(--muted); text-align: center; padding: 24px; }
+
+/* ===== نوار بالا ===== */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  background: var(--primary);
+  color: var(--on-primary);
+  flex: none;
+}
+.title { margin: 0; font-size: 17px; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-head { flex: 1; min-width: 0; }
+.chat-head .title { font-size: 16px; direction: ltr; text-align: right; unicode-bidi: plaintext; }
+.chat-head .muted { color: inherit; opacity: .8; }
+
+.icon-btn {
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%;
+  background: transparent; color: inherit;
+}
+.icon-btn:active { background: rgba(255, 255, 255, .18); }
+
+/* ===== نوار وضعیت ===== */
+.status-strip { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px 0; flex: none; }
+.status-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 10px;
+  background: var(--surface-2); color: var(--muted);
+  font-size: 13px;
+}
+.status-item.ok   { background: var(--ok-bg);   color: var(--ok); }
+.status-item.warn { background: var(--warn-bg); color: var(--warn); }
+.status-item.bad  { background: var(--danger-bg); color: var(--danger); }
+
+/* ===== جست‌وجو ===== */
+.search-box {
+  display: flex; align-items: center; gap: 8px;
+  margin: 10px 12px;
+  padding: 0 12px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  color: var(--muted);
+  flex: none;
+}
+.search-box input { flex: 1; border: 0; background: transparent; padding: 10px 0; outline: none; min-width: 0; }
+
+/* ===== فهرست گفتگوها ===== */
+.chat-list { list-style: none; margin: 0; padding: 0 0 90px; overflow-y: auto; flex: 1; }
+.chat-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.chat-item:active, .chat-item.selected { background: var(--surface-2); }
+.avatar {
+  width: 46px; height: 46px; border-radius: 50%;
+  background: var(--primary); color: var(--on-primary);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; flex: none;
+}
+.chat-item-body { flex: 1; min-width: 0; }
+.chat-item-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.chat-item-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; unicode-bidi: plaintext; }
+.chat-item-time { font-size: 12px; color: var(--muted); flex: none; }
+.chat-item-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.chat-item-last { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.badge {
+  min-width: 22px; height: 22px; padding: 0 6px;
+  border-radius: 999px; background: var(--primary); color: var(--on-primary);
+  font-size: 12px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+}
+
+.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 40px 20px; text-align: center; flex: 1; }
+.empty p { margin: 0; }
+
+/* ===== دکمهٔ گفتگوی جدید ===== */
+.fab {
+  position: absolute;
+  inset-inline-start: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 18px;
+  border: 0; border-radius: 999px;
+  background: var(--primary); color: var(--on-primary);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+  font-weight: 700;
+}
+.fab:active { background: var(--primary-dark); }
+
+/* ===== فرم‌ها ===== */
+.form { padding: 16px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; }
+.form label { font-weight: 700; margin-top: 6px; }
+.form h3 { margin: 14px 0 2px; font-size: 15px; }
+.form input, .form textarea, .form select, .composer select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  outline: none;
+}
+.form input:focus, .form textarea:focus, .form select:focus { border-color: var(--primary); }
+.form textarea { resize: vertical; min-height: 110px; }
+.row { display: flex; gap: 8px; align-items: stretch; }
+.row-end { justify-content: flex-end; margin-top: 8px; }
+.row input { flex: 1; min-width: 0; }
+
+.error {
+  padding: 10px 12px; border-radius: 10px;
+  background: var(--danger-bg); color: var(--danger);
+  font-size: 13px;
+}
+
+.card {
+  padding: 12px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border);
+  font-size: 13px;
+}
+.card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; word-break: break-word; }
+
+/* ===== دکمه‌ها ===== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 16px;
+  border: 1px solid transparent; border-radius: 10px;
+  font-weight: 700;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: var(--on-primary); }
+.btn-primary:active { background: var(--primary-dark); }
+.btn-ghost { background: transparent; border-color: var(--border); color: var(--text); }
+.btn-danger { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+.btn-block { width: 100%; margin-top: 8px; }
+
+/* ===== صفحهٔ چت ===== */
+.msg-list {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.date-sep {
+  align-self: center;
+  padding: 2px 12px; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted);
+  font-size: 12px; margin: 6px 0;
+}
+.msg-row { display: flex; flex-direction: column; max-width: 82%; }
+.msg-row.out { align-self: flex-start; }  /* در RTL یعنی سمت راست */
+.msg-row.in  { align-self: flex-end; }    /* در RTL یعنی سمت چپ */
+
+.bubble {
+  padding: 8px 12px;
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+  text-align: start;
+  cursor: pointer;
+  user-select: text;
+}
+.out .bubble { background: var(--bubble-out); border-end-start-radius: 4px; }
+.in  .bubble { background: var(--bubble-in);  border-end-end-radius: 4px; border: 1px solid var(--border); }
+.out.failed .bubble { border: 1px solid var(--danger); }
+
+.bubble-meta {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 2px; padding: 0 4px;
+  font-size: 11px; color: var(--muted);
+}
+.msg-status.ok      { color: var(--ok); }
+.msg-status.pending { color: var(--warn); }
+.msg-status.failed  { color: var(--danger); font-weight: 700; }
+
+/* ===== نوار نوشتن پیام ===== */
+.composer {
+  flex: none;
+  padding: 8px 10px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.composer select { padding: 6px 10px; font-size: 13px; }
+.composer-row { display: flex; align-items: flex-end; gap: 8px; }
+.composer-row textarea {
+  flex: 1; min-width: 0;
+  max-height: 140px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface-2);
+  outline: none; resize: none;
+  unicode-bidi: plaintext;
+}
+.send-btn {
+  width: 44px; height: 44px; flex: none;
+  border: 0; border-radius: 50%;
+  background: var(--primary); color: var(--on-primary);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.send-btn:active { background: var(--primary-dark); }
+
+/* ===== پنجره‌ها ===== */
+.overlay {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0, 0, 0, .45);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.dialog, .sheet {
+  width: 100%; max-width: 420px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.dialog h3 { margin: 0 0 6px; }
+.dialog p { margin: 0 0 8px; color: var(--muted); }
+#sheet { align-items: flex-end; }
+.sheet { border-end-start-radius: 0; border-end-end-radius: 0; max-width: 520px; }
+.sheet-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 12px 8px;
+  border: 0; border-bottom: 1px solid var(--border);
+  background: transparent; text-align: start;
+}
+.sheet-detail { padding: 8px; font-size: 13px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.toast {
+  position: fixed; z-index: 60;
+  inset-inline: 16px;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  margin: 0 auto; max-width: 420px;
+  padding: 10px 14px; border-radius: 10px;
+  background: #1c2530; color: #fff;
+  text-align: center; font-size: 13px;
+}
+</style>
+
 </head>
 <body>
-  <div class="card">
-    <h2>پیام‌رسان آزمایشی</h2>
-    <p>نسخهٔ آزمایشی برنامه آماده است.</p>
-    <button onclick="alert('برنامه درست کار می‌کند')">آزمایش برنامه</button>
+
+<!-- ===== کتابخانهٔ آیکون‌ها (SVG داخلی، بدون ایموجی) ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-search" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></symbol>
+    <symbol id="i-tune" viewBox="0 0 24 24"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></symbol>
+    <symbol id="i-retry" viewBox="0 0 24 24"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></symbol>
+    <symbol id="i-sim" viewBox="0 0 24 24"><path d="M18 2h-8L4.02 8 4 20c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></symbol>
+    <symbol id="i-contacts" viewBox="0 0 24 24"><path d="M20 0H4v2h16V0zM4 24h16v-2H4v2zM20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 2.75c1.24 0 2.25 1.01 2.25 2.25s-1.01 2.25-2.25 2.25S9.75 10.24 9.75 9 10.76 6.75 12 6.75zM17 17H7v-1.5c0-1.67 3.33-2.5 5-2.5s5 .83 5 2.5V17z"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></symbol>
+    <symbol id="i-ok" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></symbol>
+  </defs>
+</svg>
+
+<div id="app" data-view="home">
+
+  <!-- ===== ستون فهرست گفتگوها (صفحهٔ اصلی) ===== -->
+  <section id="screen-home" class="pane pane-list">
+    <header class="topbar">
+      <h1 class="title">پیام‌رسان آزمایشی</h1>
+      <button id="btn-settings" class="icon-btn" aria-label="تنظیمات و اطلاعات دستگاه">
+        <svg class="ic"><use href="#i-tune"/></svg>
+      </button>
+    </header>
+
+    <div class="status-strip" id="status-strip">
+      <div class="status-item" id="conn-status">
+        <svg class="ic ic-sm"><use href="#i-info"/></svg>
+        <span id="conn-text">در حال بررسی اتصال SMS...</span>
+      </div>
+      <div class="status-item" id="perm-status">
+        <svg class="ic ic-sm"><use href="#i-info"/></svg>
+        <span id="perm-text">در حال بررسی مجوزها...</span>
+      </div>
+    </div>
+
+    <div class="search-box">
+      <svg class="ic ic-sm"><use href="#i-search"/></svg>
+      <input id="search-input" type="search" inputmode="search" autocomplete="off"
+             placeholder="جست‌وجو در گفتگوها و شماره‌ها">
+    </div>
+
+    <ul id="chat-list" class="chat-list"></ul>
+
+    <div id="empty-home" class="empty hidden">
+      <svg class="ic ic-xl"><use href="#i-chat"/></svg>
+      <p>هنوز گفتگویی وجود ندارد.</p>
+      <p class="muted">با دکمهٔ «گفتگوی جدید» شروع کن.</p>
+    </div>
+
+    <button id="btn-new" class="fab" aria-label="گفتگوی جدید">
+      <svg class="ic"><use href="#i-plus"/></svg>
+      <span>گفتگوی جدید</span>
+    </button>
+  </section>
+
+  <!-- ===== ستون اصلی ===== -->
+  <main class="pane pane-main">
+
+    <!-- جای‌نگهدار برای دسکتاپ، وقتی هیچ گفتگویی باز نیست -->
+    <section id="screen-empty" class="screen empty">
+      <svg class="ic ic-xl"><use href="#i-chat"/></svg>
+      <p>یک گفتگو را انتخاب کن یا گفتگوی جدید بساز.</p>
+    </section>
+
+    <!-- ===== گفتگوی جدید ===== -->
+    <section id="screen-new" class="screen">
+      <header class="topbar">
+        <button id="btn-new-back" class="icon-btn" aria-label="لغو و بازگشت">
+          <svg class="ic"><use href="#i-back"/></svg>
+        </button>
+        <h2 class="title">گفتگوی جدید</h2>
+      </header>
+
+      <div class="form">
+        <label for="new-phone">شمارهٔ گیرنده</label>
+        <div class="row">
+          <input id="new-phone" type="tel" inputmode="tel" dir="ltr" autocomplete="off"
+                 placeholder="09123456789">
+          <button id="btn-pick-contact" class="btn btn-ghost" type="button">
+            <svg class="ic ic-sm"><use href="#i-contacts"/></svg>
+            <span>دفترچه تلفن</span>
+          </button>
+        </div>
+
+        <div id="new-sim-wrap" class="hidden">
+          <label for="new-sim">سیم‌کارت فرستنده</label>
+          <select id="new-sim"></select>
+        </div>
+
+        <label for="new-text">متن پیام</label>
+        <textarea id="new-text" rows="5" placeholder="متن پیام را بنویس"></textarea>
+        <div class="muted small" id="new-counter"></div>
+
+        <div id="new-error" class="error hidden" role="alert"></div>
+
+        <div class="row row-end">
+          <button id="btn-new-cancel" class="btn btn-ghost" type="button">لغو</button>
+          <button id="btn-new-send" class="btn btn-primary" type="button">
+            <svg class="ic ic-sm flip"><use href="#i-send"/></svg>
+            <span>ارسال</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== صفحهٔ چت ===== -->
+    <section id="screen-chat" class="screen">
+      <header class="topbar">
+        <button id="btn-chat-back" class="icon-btn" aria-label="بازگشت">
+          <svg class="ic"><use href="#i-back"/></svg>
+        </button>
+        <div class="chat-head">
+          <h2 class="title" id="chat-title"></h2>
+          <div class="muted small" id="chat-sub"></div>
+        </div>
+        <button id="btn-chat-clear" class="icon-btn" aria-label="پاک‌کردن پیام‌ها">
+          <svg class="ic"><use href="#i-close"/></svg>
+        </button>
+        <button id="btn-chat-delete" class="icon-btn" aria-label="حذف گفتگو">
+          <svg class="ic"><use href="#i-trash"/></svg>
+        </button>
+      </header>
+
+      <div id="msg-list" class="msg-list"></div>
+
+      <div class="composer">
+        <div id="chat-sim-wrap" class="hidden">
+          <select id="chat-sim" aria-label="سیم‌کارت فرستنده"></select>
+        </div>
+        <div class="composer-row">
+          <textarea id="msg-input" rows="1" placeholder="پیام بنویس"></textarea>
+          <button id="btn-msg-send" class="send-btn" aria-label="ارسال">
+            <svg class="ic flip"><use href="#i-send"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== تنظیمات و اطلاعات دستگاه ===== -->
+    <section id="screen-settings" class="screen">
+      <header class="topbar">
+        <button id="btn-settings-back" class="icon-btn" aria-label="بازگشت">
+          <svg class="ic"><use href="#i-back"/></svg>
+        </button>
+        <h2 class="title">تنظیمات و اطلاعات دستگاه</h2>
+      </header>
+
+      <div class="form">
+        <h3>وضعیت قابلیت SMS</h3>
+        <div id="sms-detail" class="card"></div>
+
+        <h3>اطلاعات دستگاه</h3>
+        <div id="device-info" class="card"></div>
+
+        <h3>داده‌های محلی</h3>
+        <p class="muted">گفتگوها فقط روی همین دستگاه ذخیره می‌شوند و به هیچ سروری ارسال نمی‌شوند.</p>
+        <button id="btn-clear-all" class="btn btn-danger" type="button">
+          <svg class="ic ic-sm"><use href="#i-trash"/></svg>
+          <span>پاک‌کردن همهٔ گفتگوها</span>
+        </button>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ===== پنجرهٔ تأیید ===== -->
+<div id="dialog" class="overlay hidden" role="dialog" aria-modal="true">
+  <div class="dialog">
+    <h3 id="dialog-title"></h3>
+    <p id="dialog-body"></p>
+    <div class="row row-end">
+      <button id="dialog-cancel" class="btn btn-ghost" type="button">انصراف</button>
+      <button id="dialog-ok" class="btn btn-primary" type="button">تأیید</button>
+    </div>
   </div>
+</div>
+
+<!-- ===== منوی عملیات پیام (کپی، جزئیات، تلاش مجدد) ===== -->
+<div id="sheet" class="overlay hidden">
+  <div class="sheet">
+    <div id="sheet-body"></div>
+    <button id="sheet-close" class="btn btn-ghost btn-block" type="button">بستن</button>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden" role="status"></div>
+
+<script>
+/* =====================================================
+   Util: توابع کمکی مشترک (اعداد، شماره، تاریخ، شناسه)
+   ===================================================== */
+const Util = {
+  toEn(s) {
+    return String(s == null ? '' : s)
+      .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 1776))
+      .replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 1632));
+  },
+  toFa(s) {
+    return String(s == null ? '' : s).replace(/[0-9]/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+  },
+  /** نرمال‌سازی شماره: ارقام انگلیسی، حذف فاصله و خط تیره، +98 و 0098 به 0 */
+  normalizePhone(raw) {
+    let s = Util.toEn(raw).trim().replace(/[\s\-().]/g, '');
+    if (s.startsWith('0098')) s = '+98' + s.slice(4);
+    if (s.startsWith('+98')) s = '0' + s.slice(3);
+    else if (/^98\d{10}$/.test(s)) s = '0' + s.slice(2);
+    return s;
+  },
+  /** موبایل ایران (09xxxxxxxxx) یا شمارهٔ بین‌المللی ۵ تا ۱۵ رقمی */
+  isValidPhone(p) {
+    return /^09\d{9}$/.test(p) || /^\+?\d{5,15}$/.test(p);
+  },
+  uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  },
+  fnv1a(str) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0).toString(16);
+  },
+  /** کلید یکتا برای جلوگیری از ثبت دوبارهٔ یک پیامک دریافتی */
+  makeDedupeKey(phone, ts, text) {
+    return phone + '|' + ts + '|' + Util.fnv1a(String(text));
+  },
+  formatTime(ts) {
+    return new Intl.DateTimeFormat('fa-IR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tehran' }).format(ts);
+  },
+  formatDate(ts) {
+    return new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Tehran' }).format(ts);
+  },
+  /** کلید روز (ASCII) برای گروه‌بندی پیام‌ها زیر جداکنندهٔ تاریخ */
+  dayKey(ts) {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tehran' }).format(ts);
+  },
+  /** گزارش خطا بدون شماره و متن پیام */
+  logError(context, err) {
+    console.error('[sms-lab]', context, err && (err.name || err.message) ? (err.name || err.message) : 'error');
+  }
+};
+
+/* =====================================================
+   آداپتور سطح پایین: IndexedDB یا حافظهٔ موقت (در صورت نبود IndexedDB)
+   ===================================================== */
+const DB_NAME = 'sms_lab';
+const DB_VERSION = 1;
+const SCHEMA_VERSION = 1;
+
+function reqP(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function openIdbAdapter() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) { reject(new Error('IndexedDB unavailable')); return; }
+    const open = indexedDB.open(DB_NAME, DB_VERSION);
+    open.onupgradeneeded = () => {
+      const db = open.result;
+      const conv = db.createObjectStore('conversations', { keyPath: 'id' });
+      conv.createIndex('phone', 'phone', { unique: true });
+      conv.createIndex('lastMessageAt', 'lastMessageAt');
+      const msg = db.createObjectStore('messages', { keyPath: 'id' });
+      msg.createIndex('conversationId', 'conversationId');
+      msg.createIndex('dedupeKey', 'dedupeKey');
+      msg.createIndex('createdAt', 'createdAt');
+      db.createObjectStore('meta', { keyPath: 'key' });
+    };
+    open.onerror = () => reject(open.error);
+    open.onblocked = () => reject(new Error('IndexedDB blocked'));
+    open.onsuccess = () => {
+      const db = open.result;
+      const store = (name, mode) => db.transaction(name, mode).objectStore(name);
+      resolve({
+        getAll: name => reqP(store(name, 'readonly').getAll()),
+        get: (name, key) => reqP(store(name, 'readonly').get(key)),
+        put: (name, obj) => reqP(store(name, 'readwrite').put(obj)),
+        del: (name, key) => reqP(store(name, 'readwrite').delete(key)),
+        byIndex: (name, index, value) => reqP(store(name, 'readonly').index(index).getAll(value)),
+        clear: name => reqP(store(name, 'readwrite').clear())
+      });
+    };
+  });
+}
+
+function memoryAdapter() {
+  const data = { conversations: new Map(), messages: new Map(), meta: new Map() };
+  const keyField = { conversations: 'id', messages: 'id', meta: 'key' };
+  return {
+    getAll: async name => Array.from(data[name].values()),
+    get: async (name, key) => data[name].get(key),
+    put: async (name, obj) => { data[name].set(obj[keyField[name]], obj); },
+    del: async (name, key) => { data[name].delete(key); },
+    byIndex: async (name, index, value) =>
+      Array.from(data[name].values()).filter(o => o[index] === value),
+    clear: async name => { data[name].clear(); }
+  };
+}
+
+/* =====================================================
+   Store: لایهٔ داده‌ی برنامه
+   همهٔ رکوردها شناسهٔ یکتا (UUID)، updatedAt و syncState دارند
+   تا بعداً بتوان با پایگاه داده مرکزی (رسا) همگام کرد.
+   ===================================================== */
+const Store = (() => {
+  let db = null;
+  let persistent = false;
+  let initError = null;
+
+  async function init() {
+    try {
+      db = await openIdbAdapter();
+      await db.put('meta', { key: 'probe', value: Date.now() });
+      persistent = true;
+    } catch (e) {
+      db = memoryAdapter();
+      persistent = false;
+      initError = (e && e.name) || 'unknown';
+      Util.logError('storage-init', e);
+    }
+    return { persistent, initError };
+  }
+
+  /* ---------- گفتگوها ---------- */
+  async function listConversations() {
+    const all = await db.getAll('conversations');
+    return all.sort((a, b) => (b.lastMessageAt || b.createdAt) - (a.lastMessageAt || a.createdAt));
+  }
+
+  async function getConversation(id) {
+    return db.get('conversations', id);
+  }
+
+  async function getConversationByPhone(phone) {
+    const rows = await db.byIndex('conversations', 'phone', phone);
+    return rows[0] || null;
+  }
+
+  /** اگر گفتگو با این شماره وجود داشته باشد همان را برمی‌گرداند */
+  async function getOrCreateConversation(phone, name) {
+    const existing = await getConversationByPhone(phone);
+    if (existing) return existing;
+    const now = Date.now();
+    const conv = {
+      id: Util.uuid(),
+      phone,
+      name: name || '',
+      createdAt: now,
+      updatedAt: now,
+      lastMessageAt: 0,
+      lastText: '',
+      lastDirection: '',
+      unreadCount: 0,
+      schemaVersion: SCHEMA_VERSION,
+      syncState: 'local'
+    };
+    await db.put('conversations', conv);
+    return conv;
+  }
+
+  async function updateConversation(id, patch) {
+    const conv = await db.get('conversations', id);
+    if (!conv) return null;
+    Object.assign(conv, patch, { updatedAt: Date.now(), syncState: 'local' });
+    await db.put('conversations', conv);
+    return conv;
+  }
+
+  async function deleteConversation(id) {
+    const msgs = await db.byIndex('messages', 'conversationId', id);
+    for (const m of msgs) await db.del('messages', m.id);
+    await db.del('conversations', id);
+  }
+
+  /* ---------- پیام‌ها ---------- */
+  async function listMessages(conversationId) {
+    const rows = await db.byIndex('messages', 'conversationId', conversationId);
+    return rows.sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async function getMessage(id) {
+    return db.get('messages', id);
+  }
+
+  async function findByDedupeKey(key) {
+    const rows = await db.byIndex('messages', 'dedupeKey', key);
+    return rows[0] || null;
+  }
+
+  async function refreshSummary(conversationId) {
+    const msgs = await listMessages(conversationId);
+    const last = msgs[msgs.length - 1];
+    const unread = msgs.filter(m => m.direction === 'in' && !m.readInApp).length;
+    await updateConversation(conversationId, {
+      lastMessageAt: last ? last.createdAt : 0,
+      lastText: last ? last.text : '',
+      lastDirection: last ? last.direction : '',
+      unreadCount: unread
+    });
+  }
+
+  /**
+   * ثبت پیام جدید. ساختار:
+   * { conversationId, direction:'in'|'out', phone, text, createdAt?, status, dedupeKey?, simSlot? }
+   * status: queued | sending | sent | failed | delivered | received
+   */
+  async function addMessage(input) {
+    const now = Date.now();
+    const msg = {
+      id: Util.uuid(),
+      conversationId: input.conversationId,
+      direction: input.direction,
+      phone: input.phone,
+      text: input.text,
+      createdAt: input.createdAt || now,
+      attemptedAt: input.attemptedAt || 0,
+      status: input.status,
+      osResult: input.osResult || '',
+      errorCode: input.errorCode || '',
+      errorDetail: input.errorDetail || '',
+      deliveredAt: 0,
+      parts: input.parts || 1,
+      simSlot: input.simSlot == null ? null : input.simSlot,
+      readInApp: input.direction === 'out',
+      dedupeKey: input.dedupeKey || '',
+      updatedAt: now,
+      schemaVersion: SCHEMA_VERSION,
+      syncState: 'local'
+    };
+    await db.put('messages', msg);
+    await refreshSummary(msg.conversationId);
+    return msg;
+  }
+
+  async function updateMessage(id, patch) {
+    const msg = await db.get('messages', id);
+    if (!msg) return null;
+    Object.assign(msg, patch, { updatedAt: Date.now(), syncState: 'local' });
+    await db.put('messages', msg);
+    await refreshSummary(msg.conversationId);
+    return msg;
+  }
+
+  async function clearMessages(conversationId) {
+    const msgs = await db.byIndex('messages', 'conversationId', conversationId);
+    for (const m of msgs) await db.del('messages', m.id);
+    await refreshSummary(conversationId);
+  }
+
+  /** پیام‌های دریافتی این گفتگو را «دیده‌شده در برنامه» علامت می‌زند (نه خوانده‌شده توسط طرف مقابل) */
+  async function markRead(conversationId) {
+    const msgs = await db.byIndex('messages', 'conversationId', conversationId);
+    let changed = false;
+    for (const m of msgs) {
+      if (m.direction === 'in' && !m.readInApp) {
+        m.readInApp = true;
+        m.updatedAt = Date.now();
+        m.syncState = 'local';
+        await db.put('messages', m);
+        changed = true;
+      }
+    }
+    if (changed) await refreshSummary(conversationId);
+  }
+
+  async function clearAll() {
+    await db.clear('messages');
+    await db.clear('conversations');
+  }
+
+  return {
+    init,
+    get persistent() { return persistent; },
+    get initError() { return initError; },
+    listConversations, getConversation, getConversationByPhone, getOrCreateConversation,
+    updateConversation, deleteConversation,
+    listMessages, getMessage, findByDedupeKey, addMessage, updateMessage,
+    clearMessages, markRead, clearAll
+  };
+})();
+</script>
+
+<script>
+/* =====================================================
+   SmsBridge: تنها نقطهٔ ارتباط رابط کاربری با قابلیت‌های بومی SMS
+
+   اصل مهم: این لایه هیچ نتیجه‌ای را شبیه‌سازی نمی‌کند.
+   - اگر پلاگین بومی "SmsLab" (Capacitor) وجود داشته باشد، همه‌چیز از آن می‌آید.
+   - اگر وجود نداشته باشد (مرورگر، یا APK ساده‌ای که فقط WebView است)،
+     وضعیت «در دسترس نیست» گزارش می‌شود و هر درخواست ارسال با خطا رد می‌شود.
+
+   قرارداد پلاگین بومی (برای مرحلهٔ بعد، نوشتن آن با Kotlin/Java):
+     checkPermissions()            → { send, receive, contacts, phoneState }  هرکدام: 'granted' | 'denied' | 'prompt'
+     requestPermissions({ which }) → همان خروجی بالا
+     getSims()                     → { sims: [{ slot, subscriptionId, label }] }
+     sendSms({ id, phone, text, simSlot })  → { accepted: true }
+     drainReceived()               → { messages: [{ phone, text, timestamp }] }  پیام‌های رسیده در زمان بسته‌بودن رابط
+     pickContact()                 → { phone, name }
+     getDeviceInfo()               → { model, androidVersion, ... }
+     رویدادها:
+       'smsSent'      { id, result: 'ok' | 'error', errorCode, errorDetail, parts }
+       'smsDelivered' { id, result: 'ok' | 'error', timestamp }
+       'smsReceived'  { phone, text, timestamp }
+   ===================================================== */
+const SmsBridge = (() => {
+  const listeners = { smsSent: [], smsDelivered: [], smsReceived: [] };
+  let plugin = null;
+  let platform = 'web';
+  let initialized = false;
+
+  function detect() {
+    const cap = window.Capacitor;
+    if (cap) {
+      try { platform = typeof cap.getPlatform === 'function' ? cap.getPlatform() : 'web'; } catch (e) { platform = 'web'; }
+      const p = cap.Plugins && cap.Plugins.SmsLab;
+      const registered = typeof cap.isPluginAvailable === 'function' ? cap.isPluginAvailable('SmsLab') : !!p;
+      if (p && registered) plugin = p;
+    }
+  }
+
+  async function init() {
+    if (initialized) return;
+    initialized = true;
+    detect();
+    if (!plugin) return;
+    for (const evt of Object.keys(listeners)) {
+      try {
+        await plugin.addListener(evt, data => listeners[evt].forEach(fn => {
+          try { fn(data); } catch (e) { Util.logError('listener-' + evt, e); }
+        }));
+      } catch (e) { Util.logError('addListener-' + evt, e); }
+    }
+  }
+
+  function on(evt, fn) {
+    if (listeners[evt]) listeners[evt].push(fn);
+  }
+
+  function isNative() { return !!plugin; }
+
+  /** وضعیت واقعی قابلیت SMS */
+  function capabilities() {
+    if (plugin) {
+      return { available: true, platform, reason: '' };
+    }
+    if (platform === 'android' || platform === 'ios') {
+      return { available: false, platform, reason: 'برنامه روی گوشی اجرا می‌شود اما پلاگین بومی SMS در آن نصب نشده است.' };
+    }
+    return {
+      available: false, platform: 'web',
+      reason: 'برنامه داخل مرورگر یا WebView ساده اجرا می‌شود. مرورگر اجازهٔ ارسال و دریافت SMS واقعی نمی‌دهد.'
+    };
+  }
+
+  function unavailableError() {
+    const e = new Error('SMS_UNAVAILABLE');
+    e.code = 'UNAVAILABLE';
+    return e;
+  }
+
+  async function checkPermissions() {
+    if (!plugin) return null;
+    try { return await plugin.checkPermissions(); }
+    catch (e) { Util.logError('checkPermissions', e); return null; }
+  }
+
+  async function requestPermissions(which) {
+    if (!plugin) throw unavailableError();
+    return plugin.requestPermissions({ which });
+  }
+
+  async function getSims() {
+    if (!plugin) return [];
+    try {
+      const r = await plugin.getSims();
+      return (r && r.sims) || [];
+    } catch (e) { Util.logError('getSims', e); return []; }
+  }
+
+  /**
+   * ارسال پیامک. تنها نتیجه‌ای که برمی‌گردد «درخواست به سیستم‌عامل داده شد» است.
+   * نتیجهٔ واقعی ارسال بعداً از طریق رویداد 'smsSent' می‌رسد.
+   */
+  async function sendSms({ id, phone, text, simSlot }) {
+    if (!plugin) throw unavailableError();
+    return plugin.sendSms({ id, phone, text, simSlot: simSlot == null ? -1 : simSlot });
+  }
+
+  async function drainReceived() {
+    if (!plugin) return [];
+    try {
+      const r = await plugin.drainReceived();
+      return (r && r.messages) || [];
+    } catch (e) { Util.logError('drainReceived', e); return []; }
+  }
+
+  /** انتخاب مخاطب: ابتدا پلاگین بومی، در غیر این صورت API مرورگر (در صورت پشتیبانی) */
+  async function pickContact() {
+    if (plugin) {
+      const r = await plugin.pickContact();
+      return r && r.phone ? { phone: r.phone, name: r.name || '' } : null;
+    }
+    if (navigator.contacts && typeof navigator.contacts.select === 'function') {
+      const res = await navigator.contacts.select(['name', 'tel'], { multiple: false });
+      if (res && res[0] && res[0].tel && res[0].tel[0]) {
+        return { phone: res[0].tel[0], name: (res[0].name && res[0].name[0]) || '' };
+      }
+      return null;
+    }
+    const e = new Error('CONTACTS_UNAVAILABLE');
+    e.code = 'UNAVAILABLE';
+    throw e;
+  }
+
+  function canPickContact() {
+    return !!plugin || !!(navigator.contacts && typeof navigator.contacts.select === 'function');
+  }
+
+  async function deviceInfo() {
+    let native = {};
+    if (plugin) {
+      try { native = (await plugin.getDeviceInfo()) || {}; } catch (e) { Util.logError('getDeviceInfo', e); }
+    }
+    return {
+      platform,
+      userAgent: navigator.userAgent,
+      language: navigator.language,
+      online: navigator.onLine,
+      native
+    };
+  }
+
+  /** ترجمهٔ کد خطا به پیام قابل‌فهم */
+  function explainError(code, detail) {
+    const map = {
+      UNAVAILABLE: 'قابلیت SMS در این محیط وجود ندارد.',
+      PERMISSION_DENIED: 'مجوز ارسال پیامک داده نشده است.',
+      GENERIC_FAILURE: 'سیستم‌عامل ارسال را ناموفق اعلام کرد (خطای عمومی).',
+      NO_SERVICE: 'گوشی سرویس شبکه (آنتنی) ندارد.',
+      NULL_PDU: 'خطای ساخت پیامک در سیستم‌عامل.',
+      RADIO_OFF: 'رادیوی گوشی خاموش است (حالت پرواز یا مشابه).',
+      NO_SIM: 'سیم‌کارت فعالی پیدا نشد.',
+      SIM_NOT_SELECTED: 'سیم‌کارت فرستنده انتخاب نشده است.',
+      LIMIT_EXCEEDED: 'محدودیت تعداد پیامک سیستم‌عامل فعال شد.',
+      INVALID_NUMBER: 'شمارهٔ گیرنده معتبر نیست.',
+      TIMEOUT: 'پاسخی از سیستم‌عامل دریافت نشد.'
+    };
+    const base = map[code] || 'ارسال ناموفق بود.';
+    return detail ? base + ' (' + detail + ')' : base;
+  }
+
+  return { init, on, isNative, capabilities, checkPermissions, requestPermissions,
+           getSims, sendSms, drainReceived, pickContact, canPickContact,
+           deviceInfo, explainError };
+})();
+</script>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- ابزارهای DOM ---------- */
+const $ = id => document.getElementById(id);
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+function icon(id, cls) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const s = document.createElementNS(NS, 'svg');
+  s.setAttribute('class', 'ic ' + (cls || ''));
+  const u = document.createElementNS(NS, 'use');
+  u.setAttribute('href', '#' + id);
+  s.appendChild(u);
+  return s;
+}
+
+/* ---------- وضعیت برنامه ---------- */
+const state = {
+  view: 'empty',
+  convId: null,
+  query: '',
+  sims: [],
+  simSlot: '',
+  perms: null,
+  busy: false,
+  pickedName: ''
+};
+const sendingIds = new Set();
+
+const STATUS_LABEL = {
+  queued: 'در صف ارسال',
+  sending: 'در حال ارسال',
+  sent: 'ارسال‌شده از گوشی',
+  failed: 'ارسال ناموفق',
+  delivered: 'تحویل‌شده به گوشی گیرنده',
+  received: 'دریافت‌شده'
+};
+const PERM_LABEL = { granted: 'داده شده', denied: 'رد شده', prompt: 'درخواست‌نشده' };
+
+/* ---------- ناوبری بین صفحه‌ها ---------- */
+const SCREENS = ['empty', 'new', 'chat', 'settings'];
+function showScreen(name) {
+  SCREENS.forEach(n => $('screen-' + n).classList.toggle('active', n === name));
+  // صفحهٔ جای‌نگهدار با کلاس empty همیشه display:flex می‌گیرد، پس مستقیم کنترل می‌شود
+  $('screen-empty').style.display = name === 'empty' ? 'flex' : 'none';
+  state.view = name;
+  $('app').dataset.view = name === 'empty' ? 'home' : name;
+}
+
+/* ---------- پیام کوتاه و پنجرهٔ تأیید ---------- */
+let toastTimer = null;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 3500);
+}
+
+function confirmDialog(title, body, okText) {
+  return new Promise(resolve => {
+    $('dialog-title').textContent = title;
+    $('dialog-body').textContent = body;
+    $('dialog-ok').textContent = okText || 'تأیید';
+    const d = $('dialog');
+    d.classList.remove('hidden');
+    const done = v => {
+      d.classList.add('hidden');
+      $('dialog-ok').onclick = null;
+      $('dialog-cancel').onclick = null;
+      resolve(v);
+    };
+    $('dialog-ok').onclick = () => done(true);
+    $('dialog-cancel').onclick = () => done(false);
+  });
+}
+
+function closeSheet() { $('sheet').classList.add('hidden'); }
+
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); toast('متن کپی شد.'); return; } catch (e) { /* ادامه با روش جایگزین */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = t;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    toast(ok ? 'متن کپی شد.' : 'کپی انجام نشد.');
+  } catch (e) { toast('کپی انجام نشد.'); }
+}
+
+/* ---------- نمایش فهرست گفتگوها ---------- */
+function displayName(c) { return c.name || Util.toFa(c.phone); }
+
+function avatarText(c) {
+  if (c.name) return Array.from(c.name)[0];
+  return Util.toFa(c.phone.slice(-2));
+}
+
+async function renderList() {
+  const all = await Store.listConversations();
+  const q = Util.toEn(state.query).trim().toLowerCase();
+  const items = q
+    ? all.filter(c => (c.name || '').toLowerCase().includes(q) ||
+                      c.phone.toLowerCase().includes(q) ||
+                      (c.lastText || '').toLowerCase().includes(q))
+    : all;
+
+  const ul = $('chat-list');
+  ul.replaceChildren();
+  const today = Util.dayKey(Date.now());
+
+  items.forEach(c => {
+    const li = el('li', 'chat-item' + (c.id === state.convId ? ' selected' : ''));
+    li.appendChild(el('div', 'avatar', avatarText(c)));
+
+    const body = el('div', 'chat-item-body');
+    const top = el('div', 'chat-item-top');
+    top.appendChild(el('span', 'chat-item-name', displayName(c)));
+    let when = '';
+    if (c.lastMessageAt) {
+      when = Util.dayKey(c.lastMessageAt) === today ? Util.formatTime(c.lastMessageAt) : Util.formatDate(c.lastMessageAt);
+    }
+    top.appendChild(el('span', 'chat-item-time', when));
+
+    const bottom = el('div', 'chat-item-bottom');
+    const last = (c.lastDirection === 'out' ? 'شما: ' : '') + (c.lastText || '');
+    bottom.appendChild(el('span', 'chat-item-last', last));
+    if (c.unreadCount > 0) bottom.appendChild(el('span', 'badge', Util.toFa(c.unreadCount)));
+
+    body.appendChild(top);
+    body.appendChild(bottom);
+    li.appendChild(body);
+    li.onclick = () => openChat(c.id);
+    ul.appendChild(li);
+  });
+
+  const empty = $('empty-home');
+  empty.classList.toggle('hidden', items.length > 0);
+  const ps = empty.querySelectorAll('p');
+  if (ps.length >= 2) {
+    ps[0].textContent = q ? 'نتیجه‌ای پیدا نشد.' : 'هنوز گفتگویی وجود ندارد.';
+    ps[1].textContent = q ? '' : 'با دکمهٔ «گفتگوی جدید» شروع کن.';
+  }
+}
+
+/* ---------- صفحهٔ چت ---------- */
+function detailText(m) {
+  const lines = [];
+  lines.push('وضعیت: ' + (STATUS_LABEL[m.status] || m.status));
+  lines.push((m.direction === 'out' ? 'گیرنده: ' : 'فرستنده: ') + Util.toFa(m.phone));
+  lines.push('زمان ایجاد: ' + Util.formatDate(m.createdAt) + ' ' + Util.formatTime(m.createdAt));
+  if (m.attemptedAt) lines.push('زمان تلاش برای ارسال: ' + Util.formatDate(m.attemptedAt) + ' ' + Util.formatTime(m.attemptedAt));
+  if (m.direction === 'out') lines.push('نتیجهٔ سیستم‌عامل: ' + (m.osResult || 'ثبت نشده'));
+  if (m.errorCode) {
+    lines.push('خطا: ' + SmsBridge.explainError(m.errorCode, m.errorDetail));
+    if (m.errorCode === 'TIMEOUT') lines.push('توجه: ممکن است پیام در واقع ارسال شده باشد. پیش از تلاش مجدد بررسی کن.');
+  }
+  if (m.parts > 1) lines.push('تعداد بخش‌ها: ' + Util.toFa(m.parts));
+  if (m.simSlot != null) lines.push('سیم‌کارت: ' + Util.toFa(m.simSlot + 1));
+  if (m.deliveredAt) lines.push('زمان تحویل: ' + Util.formatDate(m.deliveredAt) + ' ' + Util.formatTime(m.deliveredAt));
+  lines.push('شناسه: ' + m.id);
+  return lines.join('\n');
+}
+
+async function openSheet(id) {
+  const m = await Store.getMessage(id);
+  if (!m) return;
+  const body = $('sheet-body');
+  body.replaceChildren();
+
+  const addItem = (ic, label, fn) => {
+    const b = el('button', 'sheet-item');
+    b.type = 'button';
+    b.appendChild(icon(ic, 'ic-sm'));
+    b.appendChild(el('span', '', label));
+    b.onclick = fn;
+    body.appendChild(b);
+  };
+
+  const detail = el('div', 'sheet-detail hidden', detailText(m));
+  addItem('i-copy', 'کپی متن', () => { copyText(m.text); closeSheet(); });
+  addItem('i-info', 'جزئیات پیام', () => detail.classList.toggle('hidden'));
+  if (m.direction === 'out' && m.status === 'failed') {
+    addItem('i-retry', 'تلاش مجدد', () => { closeSheet(); retryMessage(m.id); });
+  }
+  body.appendChild(detail);
+  $('sheet').classList.remove('hidden');
+}
+
+async function renderChat(forceScroll) {
+  const conv = await Store.getConversation(state.convId);
+  if (!conv) { showScreen('empty'); return; }
+  $('chat-title').textContent = displayName(conv);
+  $('chat-sub').textContent = conv.name ? Util.toFa(conv.phone) : '';
+
+  const list = $('msg-list');
+  const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+  const msgs = await Store.listMessages(conv.id);
+  list.replaceChildren();
+
+  let lastDay = '';
+  msgs.forEach(m => {
+    const day = Util.dayKey(m.createdAt);
+    if (day !== lastDay) {
+      list.appendChild(el('div', 'date-sep', Util.formatDate(m.createdAt)));
+      lastDay = day;
+    }
+    const row = el('div', 'msg-row ' + m.direction + (m.status === 'failed' ? ' failed' : ''));
+    const bubble = el('div', 'bubble', m.text);
+    bubble.onclick = () => openSheet(m.id);
+    const meta = el('div', 'bubble-meta');
+    meta.appendChild(el('span', '', Util.formatTime(m.createdAt)));
+    if (m.direction === 'out') {
+      const cls = m.status === 'failed' ? 'failed'
+        : (m.status === 'sent' || m.status === 'delivered') ? 'ok' : 'pending';
+      meta.appendChild(el('span', 'msg-status ' + cls, STATUS_LABEL[m.status] || m.status));
+    }
+    row.appendChild(bubble);
+    row.appendChild(meta);
+    list.appendChild(row);
+  });
+
+  if (forceScroll || nearBottom) list.scrollTop = list.scrollHeight;
+}
+
+async function openChat(id) {
+  state.convId = id;
+  await Store.markRead(id);
+  showScreen('chat');
+  await renderChat(true);
+  await renderList();
+}
+
+async function refreshUI() {
+  await renderList();
+  if (state.view === 'chat' && state.convId) await renderChat(false);
+}
+
+/* ---------- مجوزها و وضعیت ---------- */
+function setStatus(box, cls, text) {
+  box.classList.remove('ok', 'warn', 'bad');
+  if (cls) box.classList.add(cls);
+  box.querySelector('span').textContent = text;
+}
+
+function missingPerms() {
+  const p = state.perms;
+  if (!p) return null;
+  const miss = [];
+  if (p.send !== 'granted') miss.push('ارسال');
+  if (p.receive !== 'granted') miss.push('دریافت');
+  return miss;
+}
+
+async function refreshStatus() {
+  const caps = SmsBridge.capabilities();
+  const conn = $('conn-status');
+  const perm = $('perm-status');
+  state.perms = await SmsBridge.checkPermissions();
+
+  if (!caps.available) {
+    setStatus(conn, 'bad', 'SMS واقعی در این محیط در دسترس نیست');
+    setStatus(perm, '', 'مجوزها بدون پلاگین بومی قابل بررسی نیستند');
+    perm.style.cursor = 'default';
+  } else {
+    setStatus(conn, 'ok', 'قابلیت SMS گوشی متصل است');
+    const miss = missingPerms();
+    if (miss === null) {
+      setStatus(perm, 'warn', 'وضعیت مجوزها نامشخص است');
+    } else if (miss.length) {
+      setStatus(perm, 'warn', 'مجوز ' + miss.join(' و ') + ' داده نشده (برای فعال‌سازی لمس کن)');
+      perm.style.cursor = 'pointer';
+    } else {
+      setStatus(perm, 'ok', 'مجوزهای ارسال و دریافت داده شده‌اند');
+      perm.style.cursor = 'default';
+    }
+  }
+
+  let st = $('storage-status');
+  if (!Store.persistent) {
+    if (!st) {
+      st = el('div', 'status-item warn');
+      st.id = 'storage-status';
+      st.appendChild(icon('i-warn', 'ic-sm'));
+      st.appendChild(el('span', ''));
+      $('status-strip').appendChild(st);
+    }
+    st.querySelector('span').textContent = 'ذخیره‌سازی پایدار در دسترس نیست؛ گفتگوها پس از بستن برنامه حفظ نمی‌شوند.';
+  } else if (st) {
+    st.remove();
+  }
+}
+
+async function requestMissingPermissions() {
+  if (!SmsBridge.isNative()) return;
+  const ok = await confirmDialog(
+    'مجوزهای پیامک',
+    'برای ارسال و دریافت پیامک واقعی، برنامه به مجوزهای SMS و وضعیت سیم‌کارت نیاز دارد. این مجوزها فقط برای همین کار استفاده می‌شوند و هیچ پیامی به سرور ارسال نمی‌شود.',
+    'ادامه'
+  );
+  if (!ok) return;
+  try {
+    await SmsBridge.requestPermissions(['send', 'receive', 'phoneState']);
+  } catch (e) { Util.logError('request-permissions', e); }
+  await refreshStatus();
+  await loadSims();
+  const miss = missingPerms();
+  if (miss && miss.includes('دریافت')) {
+    toast('بدون مجوز دریافت، پیامک‌های ورودی در برنامه نمایش داده نمی‌شوند.');
+  }
+  if (state.view === 'settings') await renderSettings();
+}
+
+async function ensureSendPermission() {
+  if (!SmsBridge.isNative()) return { ok: false, code: 'UNAVAILABLE' };
+  let p = await SmsBridge.checkPermissions();
+  if (p && p.send === 'granted') return { ok: true };
+  const agree = await confirmDialog(
+    'مجوز ارسال پیامک',
+    'برای ارسال پیامک از طریق سیم‌کارت گوشی به مجوز ارسال SMS نیاز داریم. هزینهٔ پیامک طبق تعرفهٔ سیم‌کارت شما محاسبه می‌شود.',
+    'ادامه'
+  );
+  if (!agree) return { ok: false, code: 'PERMISSION_DENIED' };
+  try { p = await SmsBridge.requestPermissions(['send']); } catch (e) { p = null; }
+  await refreshStatus();
+  return p && p.send === 'granted' ? { ok: true } : { ok: false, code: 'PERMISSION_DENIED' };
+}
+
+/* ---------- سیم‌کارت‌ها ---------- */
+function populateSims() {
+  const multi = state.sims.length > 1;
+  ['new', 'chat'].forEach(k => {
+    const sel = $(k + '-sim');
+    sel.replaceChildren();
+    if (multi) {
+      const o = el('option', '', 'انتخاب سیم‌کارت');
+      o.value = '';
+      sel.appendChild(o);
+      state.sims.forEach(s => {
+        const op = el('option', '', s.label || ('سیم‌کارت ' + Util.toFa(s.slot + 1)));
+        op.value = String(s.slot);
+        sel.appendChild(op);
+      });
+      sel.value = state.simSlot;
+    }
+    $(k + '-sim-wrap').classList.toggle('hidden', !multi);
+    sel.onchange = () => {
+      state.simSlot = sel.value;
+      $('new-sim').value = sel.value;
+      $('chat-sim').value = sel.value;
+    };
+  });
+}
+
+async function loadSims() {
+  state.sims = await SmsBridge.getSims();
+  if (state.sims.length <= 1) state.simSlot = '';
+  populateSims();
+}
+
+/* ---------- ارسال پیامک ---------- */
+async function failMessage(id, code, detail) {
+  await Store.updateMessage(id, { status: 'failed', errorCode: code, errorDetail: detail || '', osResult: 'error' });
+  toast(SmsBridge.explainError(code, detail));
+  await refreshUI();
+}
+
+async function attemptSend(id) {
+  if (sendingIds.has(id)) return;
+  sendingIds.add(id);
+  try {
+    const m = await Store.getMessage(id);
+    if (!m) return;
+
+    if (!SmsBridge.capabilities().available) { await failMessage(id, 'UNAVAILABLE', ''); return; }
+
+    const perm = await ensureSendPermission();
+    if (!perm.ok) { await failMessage(id, perm.code, ''); return; }
+
+    let slot = null;
+    if (state.sims.length > 1) {
+      if (state.simSlot === '') { await failMessage(id, 'SIM_NOT_SELECTED', ''); return; }
+      slot = Number(state.simSlot);
+    } else if (state.sims.length === 1) {
+      slot = state.sims[0].slot;
+    }
+
+    await Store.updateMessage(id, {
+      status: 'sending', attemptedAt: Date.now(),
+      errorCode: '', errorDetail: '', osResult: '', simSlot: slot
+    });
+    await refreshUI();
+
+    try {
+      await SmsBridge.sendSms({ id: m.id, phone: m.phone, text: m.text, simSlot: slot });
+      // نتیجهٔ واقعی فقط از رویداد smsSent می‌آید؛ اینجا وضعیت «ارسال‌شده» ثبت نمی‌شود.
+    } catch (e) {
+      await failMessage(id, (e && e.code) || 'GENERIC_FAILURE', '');
+    }
+  } finally {
+    sendingIds.delete(id);
+  }
+}
+
+async function retryMessage(id) {
+  const m = await Store.getMessage(id);
+  if (!m || m.status !== 'failed') return;
+  let body = 'پیام دوباره برای ارسال به سیستم‌عامل داده می‌شود و هزینهٔ آن طبق تعرفهٔ سیم‌کارت محاسبه می‌شود.';
+  if (m.errorCode === 'TIMEOUT') body = 'ممکن است این پیام پیش‌تر ارسال شده باشد. ' + body;
+  const ok = await confirmDialog('تلاش مجدد برای ارسال', body, 'ارسال دوباره');
+  if (!ok) return;
+  await attemptSend(id);
+}
+
+function checkSimChosen() {
+  if (state.sims.length > 1 && state.simSlot === '') return false;
+  return true;
+}
+
+/* ---------- دریافت پیامک ---------- */
+async function handleIncoming(raw) {
+  try {
+    let phone = String(raw.phone || '').trim();
+    if (!/[A-Za-z]/.test(phone)) phone = Util.normalizePhone(phone);
+    if (!phone) return;
+    const text = String(raw.text == null ? '' : raw.text);
+    const ts = Number(raw.timestamp) || Date.now();
+    const key = Util.makeDedupeKey(phone, ts, text);
+    if (await Store.findByDedupeKey(key)) return; // پیام تکراری
+
+    const conv = await Store.getOrCreateConversation(phone, '');
+    const viewing = state.view === 'chat' && state.convId === conv.id;
+    await Store.addMessage({
+      conversationId: conv.id, direction: 'in', phone, text,
+      createdAt: ts, status: 'received', dedupeKey: key
+    });
+    if (viewing) await Store.markRead(conv.id);
+    await refreshUI();
+  } catch (e) { Util.logError('incoming', e); }
+}
+
+async function drainIncoming() {
+  const msgs = await SmsBridge.drainReceived();
+  for (const m of msgs) await handleIncoming(m);
+}
+
+/* ---------- گفتگوی جدید ---------- */
+function updateCounter() {
+  const t = $('new-text').value;
+  const len = Array.from(t).length;
+  if (!len) { $('new-counter').textContent = ''; return; }
+  const uni = /[^\u0000-\u007F]/.test(t);
+  const single = uni ? 70 : 160;
+  const multi = uni ? 67 : 153;
+  const parts = len <= single ? 1 : Math.ceil(len / multi);
+  $('new-counter').textContent = Util.toFa(len) + ' نویسه، حدود ' + Util.toFa(parts) + ' بخش پیامک';
+}
+
+function newError(msg) {
+  const box = $('new-error');
+  box.textContent = msg || '';
+  box.classList.toggle('hidden', !msg);
+}
+
+function openNew() {
+  $('new-phone').value = '';
+  $('new-text').value = '';
+  state.pickedName = '';
+  newError('');
+  updateCounter();
+  state.convId = null;
+  showScreen('new');
+  renderList();
+}
+
+async function submitNew() {
+  if (state.busy) return;
+  const phone = Util.normalizePhone($('new-phone').value);
+  const text = $('new-text').value;
+  if (!phone) { newError('شمارهٔ گیرنده را وارد کن.'); return; }
+  if (!Util.isValidPhone(phone)) { newError('ساختار شماره معتبر نیست. نمونه: 09123456789'); return; }
+  if (!text.trim()) { newError('متن پیام خالی است.'); return; }
+  if (!checkSimChosen()) { newError('سیم‌کارت فرستنده را انتخاب کن.'); return; }
+  newError('');
+
+  state.busy = true;
+  try {
+    const conv = await Store.getOrCreateConversation(phone, state.pickedName);
+    const msg = await Store.addMessage({
+      conversationId: conv.id, direction: 'out', phone, text, status: 'queued'
+    });
+    await openChat(conv.id);
+    await attemptSend(msg.id);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function submitChat() {
+  if (state.busy || !state.convId) return;
+  const input = $('msg-input');
+  const text = input.value;
+  if (!text.trim()) return;
+  if (!checkSimChosen()) { toast('سیم‌کارت فرستنده را انتخاب کن.'); return; }
+
+  state.busy = true;
+  try {
+    const conv = await Store.getConversation(state.convId);
+    if (!conv) return;
+    const msg = await Store.addMessage({
+      conversationId: conv.id, direction: 'out', phone: conv.phone, text, status: 'queued'
+    });
+    input.value = '';
+    input.style.height = 'auto';
+    await renderChat(true);
+    await renderList();
+    await attemptSend(msg.id);
+  } finally {
+    state.busy = false;
+  }
+}
+
+/* ---------- تنظیمات و اطلاعات دستگاه ---------- */
+function dl(rows) {
+  const d = el('dl');
+  rows.forEach(r => {
+    d.appendChild(el('dt', '', r[0]));
+    d.appendChild(el('dd', '', r[1]));
+  });
+  return d;
+}
+
+async function renderSettings() {
+  await refreshStatus();
+  const caps = SmsBridge.capabilities();
+  const p = state.perms;
+
+  const smsRows = [
+    ['قابلیت SMS واقعی', caps.available ? 'در دسترس' : 'در دسترس نیست'],
+    ['محیط اجرا', caps.platform]
+  ];
+  if (!caps.available) smsRows.push(['دلیل', caps.reason]);
+  if (caps.available) {
+    smsRows.push(['مجوز ارسال', p ? (PERM_LABEL[p.send] || 'نامشخص') : 'نامشخص']);
+    smsRows.push(['مجوز دریافت', p ? (PERM_LABEL[p.receive] || 'نامشخص') : 'نامشخص']);
+    smsRows.push(['مجوز مخاطبین', p ? (PERM_LABEL[p.contacts] || 'نامشخص') : 'نامشخص']);
+    smsRows.push(['مجوز وضعیت تلفن (سیم‌کارت)', p ? (PERM_LABEL[p.phoneState] || 'نامشخص') : 'نامشخص']);
+    smsRows.push(['سیم‌کارت‌های قابل مشاهده', state.sims.length ? Util.toFa(state.sims.length) : 'هیچ (یا مجوز وضعیت تلفن داده نشده)']);
+  }
+  smsRows.push(['ذخیره‌سازی', Store.persistent ? 'پایدار (IndexedDB)' : 'موقت (پس از بستن از بین می‌رود)']);
+
+  const box = $('sms-detail');
+  box.replaceChildren(dl(smsRows));
+  const miss = missingPerms();
+  if (caps.available && miss && miss.length) {
+    const b = el('button', 'btn btn-ghost btn-block', 'فعال‌سازی مجوزهای پیامک');
+    b.type = 'button';
+    b.onclick = requestMissingPermissions;
+    box.appendChild(b);
+  }
+
+  const info = await SmsBridge.deviceInfo();
+  const rows = [
+    ['پلتفرم', info.platform],
+    ['وضعیت اینترنت', info.online ? 'متصل' : 'قطع'],
+    ['زبان', info.language],
+    ['مرورگر / WebView', info.userAgent]
+  ];
+  Object.keys(info.native || {}).forEach(k => rows.push([k, String(info.native[k])]));
+  $('device-info').replaceChildren(dl(rows));
+}
+
+async function openSettings() {
+  state.convId = null;
+  showScreen('settings');
+  await renderSettings();
+  await renderList();
+}
+
+/* ---------- پاک‌سازی نتایج ناتمام ---------- */
+async function sweepStale() {
+  const limit = Date.now() - 2 * 60 * 1000;
+  const convs = await Store.listConversations();
+  for (const c of convs) {
+    const msgs = await Store.listMessages(c.id);
+    for (const m of msgs) {
+      if (m.direction !== 'out') continue;
+      if (m.status !== 'sending' && m.status !== 'queued') continue;
+      if (sendingIds.has(m.id)) continue;
+      if ((m.attemptedAt || m.createdAt) < limit) {
+        await Store.updateMessage(m.id, {
+          status: 'failed', errorCode: 'TIMEOUT', errorDetail: '', osResult: 'unknown'
+        });
+      }
+    }
+  }
+}
+
+/* ---------- اتصال رویدادهای رابط ---------- */
+function bindUI() {
+  $('btn-new').onclick = openNew;
+  $('btn-settings').onclick = openSettings;
+  $('btn-new-back').onclick = $('btn-new-cancel').onclick = () => { showScreen('empty'); renderList(); };
+  $('btn-settings-back').onclick = () => { showScreen('empty'); renderList(); };
+  $('btn-chat-back').onclick = () => { state.convId = null; showScreen('empty'); renderList(); };
+  $('btn-new-send').onclick = submitNew;
+  $('btn-msg-send').onclick = submitChat;
+  $('perm-status').onclick = () => { const m = missingPerms(); if (m && m.length) requestMissingPermissions(); };
+
+  $('search-input').oninput = e => { state.query = e.target.value; renderList(); };
+  $('new-text').oninput = updateCounter;
+  $('new-phone').oninput = () => { state.pickedName = ''; };
+  $('new-phone').onblur = e => { e.target.value = Util.toEn(e.target.value); };
+
+  const input = $('msg-input');
+  input.oninput = () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+  };
+  input.onkeydown = e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitChat(); }
+  };
+
+  $('sheet-close').onclick = closeSheet;
+  $('sheet').onclick = e => { if (e.target === $('sheet')) closeSheet(); };
+
+  $('btn-chat-delete').onclick = async () => {
+    const conv = await Store.getConversation(state.convId);
+    if (!conv) return;
+    const ok = await confirmDialog('حذف گفتگو', 'گفتگو با ' + displayName(conv) + ' و همهٔ پیام‌هایش از این برنامه حذف می‌شود. پیامک‌های داخل برنامهٔ پیامک گوشی حذف نمی‌شوند.', 'حذف');
+    if (!ok) return;
+    await Store.deleteConversation(conv.id);
+    state.convId = null;
+    showScreen('empty');
+    await renderList();
+    toast('گفتگو حذف شد.');
+  };
+
+  $('btn-chat-clear').onclick = async () => {
+    const conv = await Store.getConversation(state.convId);
+    if (!conv) return;
+    const ok = await confirmDialog('پاک‌کردن پیام‌ها', 'همهٔ پیام‌های این گفتگو پاک می‌شود، اما خود گفتگو باقی می‌ماند.', 'پاک‌کردن');
+    if (!ok) return;
+    await Store.clearMessages(conv.id);
+    await refreshUI();
+    toast('پیام‌ها پاک شدند.');
+  };
+
+  $('btn-clear-all').onclick = async () => {
+    const ok = await confirmDialog('پاک‌کردن همهٔ گفتگوها', 'همهٔ گفتگوها و پیام‌های ذخیره‌شده در این برنامه برای همیشه پاک می‌شود.', 'پاک‌کردن همه');
+    if (!ok) return;
+    await Store.clearAll();
+    state.convId = null;
+    await renderList();
+    toast('همهٔ داده‌ها پاک شدند.');
+  };
+
+  $('btn-pick-contact').onclick = async () => {
+    try {
+      if (SmsBridge.isNative()) {
+        const p = await SmsBridge.checkPermissions();
+        if (!p || p.contacts !== 'granted') {
+          const ok = await confirmDialog(
+            'دسترسی به دفترچهٔ تلفن',
+            'برای انتخاب مخاطب به مجوز خواندن مخاطبین نیاز داریم. فقط هنگام انتخاب مخاطب استفاده می‌شود و فهرست مخاطبین ذخیره یا ارسال نمی‌شود.',
+            'ادامه'
+          );
+          if (!ok) return;
+          const r = await SmsBridge.requestPermissions(['contacts']);
+          if (!r || r.contacts !== 'granted') {
+            toast('بدون مجوز مخاطبین، انتخاب از دفترچه تلفن ممکن نیست.');
+            return;
+          }
+        }
+      }
+      const c = await SmsBridge.pickContact();
+      if (c) {
+        $('new-phone').value = Util.normalizePhone(c.phone);
+        state.pickedName = c.name || '';
+      }
+    } catch (e) {
+      toast('انتخاب مخاطب در این محیط ممکن نیست.');
+    }
+  };
+  if (!SmsBridge.canPickContact()) $('btn-pick-contact').title = 'در این محیط در دسترس نیست';
+}
+
+/* ---------- راه‌اندازی ---------- */
+async function main() {
+  showScreen('empty');
+  bindUI();
+
+  await Store.init();
+  await SmsBridge.init();
+
+  SmsBridge.on('smsSent', async d => {
+    if (!d || !d.id) return;
+    const ok = d.result === 'ok';
+    await Store.updateMessage(d.id, {
+      status: ok ? 'sent' : 'failed',
+      osResult: ok ? 'ok' : 'error',
+      errorCode: ok ? '' : (d.errorCode || 'GENERIC_FAILURE'),
+      errorDetail: ok ? '' : (d.errorDetail || ''),
+      parts: d.parts || 1
+    });
+    if (!ok) toast(SmsBridge.explainError(d.errorCode || 'GENERIC_FAILURE', ''));
+    await refreshUI();
+  });
+
+  SmsBridge.on('smsDelivered', async d => {
+    if (!d || !d.id) return;
+    const m = await Store.getMessage(d.id);
+    if (!m) return;
+    if (d.result === 'ok') {
+      await Store.updateMessage(d.id, { status: 'delivered', deliveredAt: d.timestamp || Date.now() });
+    } else {
+      await Store.updateMessage(d.id, { errorDetail: 'گزارش تحویل ناموفق' });
+    }
+    await refreshUI();
+  });
+
+  SmsBridge.on('smsReceived', handleIncoming);
+
+  await refreshStatus();
+  await loadSims();
+  await sweepStale();
+  await drainIncoming();
+  await renderList();
+
+  if (!Store.persistent) toast('ذخیره‌سازی پایدار در این محیط در دسترس نیست.');
+
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible') {
+      await drainIncoming();
+      await refreshStatus();
+      await refreshUI();
+    }
+  });
+}
+
+main().catch(e => Util.logError('main', e));
+})();
+</script>
+
+
 </body>
-</html>
+</html>~

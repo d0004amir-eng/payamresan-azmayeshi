@@ -1,0 +1,753 @@
+<script>
+(() => {
+'use strict';
+
+/* ---------- ابزارهای DOM ---------- */
+const $ = id => document.getElementById(id);
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+function icon(id, cls) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const s = document.createElementNS(NS, 'svg');
+  s.setAttribute('class', 'ic ' + (cls || ''));
+  const u = document.createElementNS(NS, 'use');
+  u.setAttribute('href', '#' + id);
+  s.appendChild(u);
+  return s;
+}
+
+/* ---------- وضعیت برنامه ---------- */
+const state = {
+  view: 'empty',
+  convId: null,
+  query: '',
+  sims: [],
+  simSlot: '',
+  perms: null,
+  busy: false,
+  pickedName: ''
+};
+const sendingIds = new Set();
+
+const STATUS_LABEL = {
+  queued: 'در صف ارسال',
+  sending: 'در حال ارسال',
+  sent: 'ارسال‌شده از گوشی',
+  failed: 'ارسال ناموفق',
+  delivered: 'تحویل‌شده به گوشی گیرنده',
+  received: 'دریافت‌شده'
+};
+const PERM_LABEL = { granted: 'داده شده', denied: 'رد شده', prompt: 'درخواست‌نشده' };
+
+/* ---------- ناوبری بین صفحه‌ها ---------- */
+const SCREENS = ['empty', 'new', 'chat', 'settings'];
+function showScreen(name) {
+  SCREENS.forEach(n => $('screen-' + n).classList.toggle('active', n === name));
+  // صفحهٔ جای‌نگهدار با کلاس empty همیشه display:flex می‌گیرد، پس مستقیم کنترل می‌شود
+  $('screen-empty').style.display = name === 'empty' ? 'flex' : 'none';
+  state.view = name;
+  $('app').dataset.view = name === 'empty' ? 'home' : name;
+}
+
+/* ---------- پیام کوتاه و پنجرهٔ تأیید ---------- */
+let toastTimer = null;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 3500);
+}
+
+function confirmDialog(title, body, okText) {
+  return new Promise(resolve => {
+    $('dialog-title').textContent = title;
+    $('dialog-body').textContent = body;
+    $('dialog-ok').textContent = okText || 'تأیید';
+    const d = $('dialog');
+    d.classList.remove('hidden');
+    const done = v => {
+      d.classList.add('hidden');
+      $('dialog-ok').onclick = null;
+      $('dialog-cancel').onclick = null;
+      resolve(v);
+    };
+    $('dialog-ok').onclick = () => done(true);
+    $('dialog-cancel').onclick = () => done(false);
+  });
+}
+
+function closeSheet() { $('sheet').classList.add('hidden'); }
+
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); toast('متن کپی شد.'); return; } catch (e) { /* ادامه با روش جایگزین */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = t;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    toast(ok ? 'متن کپی شد.' : 'کپی انجام نشد.');
+  } catch (e) { toast('کپی انجام نشد.'); }
+}
+
+/* ---------- نمایش فهرست گفتگوها ---------- */
+function displayName(c) { return c.name || Util.toFa(c.phone); }
+
+function avatarText(c) {
+  if (c.name) return Array.from(c.name)[0];
+  return Util.toFa(c.phone.slice(-2));
+}
+
+async function renderList() {
+  const all = await Store.listConversations();
+  const q = Util.toEn(state.query).trim().toLowerCase();
+  const items = q
+    ? all.filter(c => (c.name || '').toLowerCase().includes(q) ||
+                      c.phone.toLowerCase().includes(q) ||
+                      (c.lastText || '').toLowerCase().includes(q))
+    : all;
+
+  const ul = $('chat-list');
+  ul.replaceChildren();
+  const today = Util.dayKey(Date.now());
+
+  items.forEach(c => {
+    const li = el('li', 'chat-item' + (c.id === state.convId ? ' selected' : ''));
+    li.appendChild(el('div', 'avatar', avatarText(c)));
+
+    const body = el('div', 'chat-item-body');
+    const top = el('div', 'chat-item-top');
+    top.appendChild(el('span', 'chat-item-name', displayName(c)));
+    let when = '';
+    if (c.lastMessageAt) {
+      when = Util.dayKey(c.lastMessageAt) === today ? Util.formatTime(c.lastMessageAt) : Util.formatDate(c.lastMessageAt);
+    }
+    top.appendChild(el('span', 'chat-item-time', when));
+
+    const bottom = el('div', 'chat-item-bottom');
+    const last = (c.lastDirection === 'out' ? 'شما: ' : '') + (c.lastText || '');
+    bottom.appendChild(el('span', 'chat-item-last', last));
+    if (c.unreadCount > 0) bottom.appendChild(el('span', 'badge', Util.toFa(c.unreadCount)));
+
+    body.appendChild(top);
+    body.appendChild(bottom);
+    li.appendChild(body);
+    li.onclick = () => openChat(c.id);
+    ul.appendChild(li);
+  });
+
+  const empty = $('empty-home');
+  empty.classList.toggle('hidden', items.length > 0);
+  const ps = empty.querySelectorAll('p');
+  if (ps.length >= 2) {
+    ps[0].textContent = q ? 'نتیجه‌ای پیدا نشد.' : 'هنوز گفتگویی وجود ندارد.';
+    ps[1].textContent = q ? '' : 'با دکمهٔ «گفتگوی جدید» شروع کن.';
+  }
+}
+
+/* ---------- صفحهٔ چت ---------- */
+function detailText(m) {
+  const lines = [];
+  lines.push('وضعیت: ' + (STATUS_LABEL[m.status] || m.status));
+  lines.push((m.direction === 'out' ? 'گیرنده: ' : 'فرستنده: ') + Util.toFa(m.phone));
+  lines.push('زمان ایجاد: ' + Util.formatDate(m.createdAt) + ' ' + Util.formatTime(m.createdAt));
+  if (m.attemptedAt) lines.push('زمان تلاش برای ارسال: ' + Util.formatDate(m.attemptedAt) + ' ' + Util.formatTime(m.attemptedAt));
+  if (m.direction === 'out') lines.push('نتیجهٔ سیستم‌عامل: ' + (m.osResult || 'ثبت نشده'));
+  if (m.errorCode) {
+    lines.push('خطا: ' + SmsBridge.explainError(m.errorCode, m.errorDetail));
+    if (m.errorCode === 'TIMEOUT') lines.push('توجه: ممکن است پیام در واقع ارسال شده باشد. پیش از تلاش مجدد بررسی کن.');
+  }
+  if (m.parts > 1) lines.push('تعداد بخش‌ها: ' + Util.toFa(m.parts));
+  if (m.simSlot != null) lines.push('سیم‌کارت: ' + Util.toFa(m.simSlot + 1));
+  if (m.deliveredAt) lines.push('زمان تحویل: ' + Util.formatDate(m.deliveredAt) + ' ' + Util.formatTime(m.deliveredAt));
+  lines.push('شناسه: ' + m.id);
+  return lines.join('\n');
+}
+
+async function openSheet(id) {
+  const m = await Store.getMessage(id);
+  if (!m) return;
+  const body = $('sheet-body');
+  body.replaceChildren();
+
+  const addItem = (ic, label, fn) => {
+    const b = el('button', 'sheet-item');
+    b.type = 'button';
+    b.appendChild(icon(ic, 'ic-sm'));
+    b.appendChild(el('span', '', label));
+    b.onclick = fn;
+    body.appendChild(b);
+  };
+
+  const detail = el('div', 'sheet-detail hidden', detailText(m));
+  addItem('i-copy', 'کپی متن', () => { copyText(m.text); closeSheet(); });
+  addItem('i-info', 'جزئیات پیام', () => detail.classList.toggle('hidden'));
+  if (m.direction === 'out' && m.status === 'failed') {
+    addItem('i-retry', 'تلاش مجدد', () => { closeSheet(); retryMessage(m.id); });
+  }
+  body.appendChild(detail);
+  $('sheet').classList.remove('hidden');
+}
+
+async function renderChat(forceScroll) {
+  const conv = await Store.getConversation(state.convId);
+  if (!conv) { showScreen('empty'); return; }
+  $('chat-title').textContent = displayName(conv);
+  $('chat-sub').textContent = conv.name ? Util.toFa(conv.phone) : '';
+
+  const list = $('msg-list');
+  const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+  const msgs = await Store.listMessages(conv.id);
+  list.replaceChildren();
+
+  let lastDay = '';
+  msgs.forEach(m => {
+    const day = Util.dayKey(m.createdAt);
+    if (day !== lastDay) {
+      list.appendChild(el('div', 'date-sep', Util.formatDate(m.createdAt)));
+      lastDay = day;
+    }
+    const row = el('div', 'msg-row ' + m.direction + (m.status === 'failed' ? ' failed' : ''));
+    const bubble = el('div', 'bubble', m.text);
+    bubble.onclick = () => openSheet(m.id);
+    const meta = el('div', 'bubble-meta');
+    meta.appendChild(el('span', '', Util.formatTime(m.createdAt)));
+    if (m.direction === 'out') {
+      const cls = m.status === 'failed' ? 'failed'
+        : (m.status === 'sent' || m.status === 'delivered') ? 'ok' : 'pending';
+      meta.appendChild(el('span', 'msg-status ' + cls, STATUS_LABEL[m.status] || m.status));
+    }
+    row.appendChild(bubble);
+    row.appendChild(meta);
+    list.appendChild(row);
+  });
+
+  if (forceScroll || nearBottom) list.scrollTop = list.scrollHeight;
+}
+
+async function openChat(id) {
+  state.convId = id;
+  await Store.markRead(id);
+  showScreen('chat');
+  await renderChat(true);
+  await renderList();
+}
+
+async function refreshUI() {
+  await renderList();
+  if (state.view === 'chat' && state.convId) await renderChat(false);
+}
+
+/* ---------- مجوزها و وضعیت ---------- */
+function setStatus(box, cls, text) {
+  box.classList.remove('ok', 'warn', 'bad');
+  if (cls) box.classList.add(cls);
+  box.querySelector('span').textContent = text;
+}
+
+function missingPerms() {
+  const p = state.perms;
+  if (!p) return null;
+  const miss = [];
+  if (p.send !== 'granted') miss.push('ارسال');
+  if (p.receive !== 'granted') miss.push('دریافت');
+  return miss;
+}
+
+async function refreshStatus() {
+  const caps = SmsBridge.capabilities();
+  const conn = $('conn-status');
+  const perm = $('perm-status');
+  state.perms = await SmsBridge.checkPermissions();
+
+  if (!caps.available) {
+    setStatus(conn, 'bad', 'SMS واقعی در این محیط در دسترس نیست');
+    setStatus(perm, '', 'مجوزها بدون پلاگین بومی قابل بررسی نیستند');
+    perm.style.cursor = 'default';
+  } else {
+    setStatus(conn, 'ok', 'قابلیت SMS گوشی متصل است');
+    const miss = missingPerms();
+    if (miss === null) {
+      setStatus(perm, 'warn', 'وضعیت مجوزها نامشخص است');
+    } else if (miss.length) {
+      setStatus(perm, 'warn', 'مجوز ' + miss.join(' و ') + ' داده نشده (برای فعال‌سازی لمس کن)');
+      perm.style.cursor = 'pointer';
+    } else {
+      setStatus(perm, 'ok', 'مجوزهای ارسال و دریافت داده شده‌اند');
+      perm.style.cursor = 'default';
+    }
+  }
+
+  let st = $('storage-status');
+  if (!Store.persistent) {
+    if (!st) {
+      st = el('div', 'status-item warn');
+      st.id = 'storage-status';
+      st.appendChild(icon('i-warn', 'ic-sm'));
+      st.appendChild(el('span', ''));
+      $('status-strip').appendChild(st);
+    }
+    st.querySelector('span').textContent = 'ذخیره‌سازی پایدار در دسترس نیست؛ گفتگوها پس از بستن برنامه حفظ نمی‌شوند.';
+  } else if (st) {
+    st.remove();
+  }
+}
+
+async function requestMissingPermissions() {
+  if (!SmsBridge.isNative()) return;
+  const ok = await confirmDialog(
+    'مجوزهای پیامک',
+    'برای ارسال و دریافت پیامک واقعی، برنامه به مجوزهای SMS و وضعیت سیم‌کارت نیاز دارد. این مجوزها فقط برای همین کار استفاده می‌شوند و هیچ پیامی به سرور ارسال نمی‌شود.',
+    'ادامه'
+  );
+  if (!ok) return;
+  try {
+    await SmsBridge.requestPermissions(['send', 'receive', 'phoneState']);
+  } catch (e) { Util.logError('request-permissions', e); }
+  await refreshStatus();
+  await loadSims();
+  const miss = missingPerms();
+  if (miss && miss.includes('دریافت')) {
+    toast('بدون مجوز دریافت، پیامک‌های ورودی در برنامه نمایش داده نمی‌شوند.');
+  }
+  if (state.view === 'settings') await renderSettings();
+}
+
+async function ensureSendPermission() {
+  if (!SmsBridge.isNative()) return { ok: false, code: 'UNAVAILABLE' };
+  let p = await SmsBridge.checkPermissions();
+  if (p && p.send === 'granted') return { ok: true };
+  const agree = await confirmDialog(
+    'مجوز ارسال پیامک',
+    'برای ارسال پیامک از طریق سیم‌کارت گوشی به مجوز ارسال SMS نیاز داریم. هزینهٔ پیامک طبق تعرفهٔ سیم‌کارت شما محاسبه می‌شود.',
+    'ادامه'
+  );
+  if (!agree) return { ok: false, code: 'PERMISSION_DENIED' };
+  try { p = await SmsBridge.requestPermissions(['send']); } catch (e) { p = null; }
+  await refreshStatus();
+  return p && p.send === 'granted' ? { ok: true } : { ok: false, code: 'PERMISSION_DENIED' };
+}
+
+/* ---------- سیم‌کارت‌ها ---------- */
+function populateSims() {
+  const multi = state.sims.length > 1;
+  ['new', 'chat'].forEach(k => {
+    const sel = $(k + '-sim');
+    sel.replaceChildren();
+    if (multi) {
+      const o = el('option', '', 'انتخاب سیم‌کارت');
+      o.value = '';
+      sel.appendChild(o);
+      state.sims.forEach(s => {
+        const op = el('option', '', s.label || ('سیم‌کارت ' + Util.toFa(s.slot + 1)));
+        op.value = String(s.slot);
+        sel.appendChild(op);
+      });
+      sel.value = state.simSlot;
+    }
+    $(k + '-sim-wrap').classList.toggle('hidden', !multi);
+    sel.onchange = () => {
+      state.simSlot = sel.value;
+      $('new-sim').value = sel.value;
+      $('chat-sim').value = sel.value;
+    };
+  });
+}
+
+async function loadSims() {
+  state.sims = await SmsBridge.getSims();
+  if (state.sims.length <= 1) state.simSlot = '';
+  populateSims();
+}
+
+/* ---------- ارسال پیامک ---------- */
+async function failMessage(id, code, detail) {
+  await Store.updateMessage(id, { status: 'failed', errorCode: code, errorDetail: detail || '', osResult: 'error' });
+  toast(SmsBridge.explainError(code, detail));
+  await refreshUI();
+}
+
+async function attemptSend(id) {
+  if (sendingIds.has(id)) return;
+  sendingIds.add(id);
+  try {
+    const m = await Store.getMessage(id);
+    if (!m) return;
+
+    if (!SmsBridge.capabilities().available) { await failMessage(id, 'UNAVAILABLE', ''); return; }
+
+    const perm = await ensureSendPermission();
+    if (!perm.ok) { await failMessage(id, perm.code, ''); return; }
+
+    let slot = null;
+    if (state.sims.length > 1) {
+      if (state.simSlot === '') { await failMessage(id, 'SIM_NOT_SELECTED', ''); return; }
+      slot = Number(state.simSlot);
+    } else if (state.sims.length === 1) {
+      slot = state.sims[0].slot;
+    }
+
+    await Store.updateMessage(id, {
+      status: 'sending', attemptedAt: Date.now(),
+      errorCode: '', errorDetail: '', osResult: '', simSlot: slot
+    });
+    await refreshUI();
+
+    try {
+      await SmsBridge.sendSms({ id: m.id, phone: m.phone, text: m.text, simSlot: slot });
+      // نتیجهٔ واقعی فقط از رویداد smsSent می‌آید؛ اینجا وضعیت «ارسال‌شده» ثبت نمی‌شود.
+    } catch (e) {
+      await failMessage(id, (e && e.code) || 'GENERIC_FAILURE', '');
+    }
+  } finally {
+    sendingIds.delete(id);
+  }
+}
+
+async function retryMessage(id) {
+  const m = await Store.getMessage(id);
+  if (!m || m.status !== 'failed') return;
+  let body = 'پیام دوباره برای ارسال به سیستم‌عامل داده می‌شود و هزینهٔ آن طبق تعرفهٔ سیم‌کارت محاسبه می‌شود.';
+  if (m.errorCode === 'TIMEOUT') body = 'ممکن است این پیام پیش‌تر ارسال شده باشد. ' + body;
+  const ok = await confirmDialog('تلاش مجدد برای ارسال', body, 'ارسال دوباره');
+  if (!ok) return;
+  await attemptSend(id);
+}
+
+function checkSimChosen() {
+  if (state.sims.length > 1 && state.simSlot === '') return false;
+  return true;
+}
+
+/* ---------- دریافت پیامک ---------- */
+async function handleIncoming(raw) {
+  try {
+    let phone = String(raw.phone || '').trim();
+    if (!/[A-Za-z]/.test(phone)) phone = Util.normalizePhone(phone);
+    if (!phone) return;
+    const text = String(raw.text == null ? '' : raw.text);
+    const ts = Number(raw.timestamp) || Date.now();
+    const key = Util.makeDedupeKey(phone, ts, text);
+    if (await Store.findByDedupeKey(key)) return; // پیام تکراری
+
+    const conv = await Store.getOrCreateConversation(phone, '');
+    const viewing = state.view === 'chat' && state.convId === conv.id;
+    await Store.addMessage({
+      conversationId: conv.id, direction: 'in', phone, text,
+      createdAt: ts, status: 'received', dedupeKey: key
+    });
+    if (viewing) await Store.markRead(conv.id);
+    await refreshUI();
+  } catch (e) { Util.logError('incoming', e); }
+}
+
+async function drainIncoming() {
+  const msgs = await SmsBridge.drainReceived();
+  for (const m of msgs) await handleIncoming(m);
+}
+
+/* ---------- گفتگوی جدید ---------- */
+function updateCounter() {
+  const t = $('new-text').value;
+  const len = Array.from(t).length;
+  if (!len) { $('new-counter').textContent = ''; return; }
+  const uni = /[^\u0000-\u007F]/.test(t);
+  const single = uni ? 70 : 160;
+  const multi = uni ? 67 : 153;
+  const parts = len <= single ? 1 : Math.ceil(len / multi);
+  $('new-counter').textContent = Util.toFa(len) + ' نویسه، حدود ' + Util.toFa(parts) + ' بخش پیامک';
+}
+
+function newError(msg) {
+  const box = $('new-error');
+  box.textContent = msg || '';
+  box.classList.toggle('hidden', !msg);
+}
+
+function openNew() {
+  $('new-phone').value = '';
+  $('new-text').value = '';
+  state.pickedName = '';
+  newError('');
+  updateCounter();
+  state.convId = null;
+  showScreen('new');
+  renderList();
+}
+
+async function submitNew() {
+  if (state.busy) return;
+  const phone = Util.normalizePhone($('new-phone').value);
+  const text = $('new-text').value;
+  if (!phone) { newError('شمارهٔ گیرنده را وارد کن.'); return; }
+  if (!Util.isValidPhone(phone)) { newError('ساختار شماره معتبر نیست. نمونه: 09123456789'); return; }
+  if (!text.trim()) { newError('متن پیام خالی است.'); return; }
+  if (!checkSimChosen()) { newError('سیم‌کارت فرستنده را انتخاب کن.'); return; }
+  newError('');
+
+  state.busy = true;
+  try {
+    const conv = await Store.getOrCreateConversation(phone, state.pickedName);
+    const msg = await Store.addMessage({
+      conversationId: conv.id, direction: 'out', phone, text, status: 'queued'
+    });
+    await openChat(conv.id);
+    await attemptSend(msg.id);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function submitChat() {
+  if (state.busy || !state.convId) return;
+  const input = $('msg-input');
+  const text = input.value;
+  if (!text.trim()) return;
+  if (!checkSimChosen()) { toast('سیم‌کارت فرستنده را انتخاب کن.'); return; }
+
+  state.busy = true;
+  try {
+    const conv = await Store.getConversation(state.convId);
+    if (!conv) return;
+    const msg = await Store.addMessage({
+      conversationId: conv.id, direction: 'out', phone: conv.phone, text, status: 'queued'
+    });
+    input.value = '';
+    input.style.height = 'auto';
+    await renderChat(true);
+    await renderList();
+    await attemptSend(msg.id);
+  } finally {
+    state.busy = false;
+  }
+}
+
+/* ---------- تنظیمات و اطلاعات دستگاه ---------- */
+function dl(rows) {
+  const d = el('dl');
+  rows.forEach(r => {
+    d.appendChild(el('dt', '', r[0]));
+    d.appendChild(el('dd', '', r[1]));
+  });
+  return d;
+}
+
+async function renderSettings() {
+  await refreshStatus();
+  const caps = SmsBridge.capabilities();
+  const p = state.perms;
+
+  const smsRows = [
+    ['قابلیت SMS واقعی', caps.available ? 'در دسترس' : 'در دسترس نیست'],
+    ['محیط اجرا', caps.platform]
+  ];
+  if (!caps.available) smsRows.push(['دلیل', caps.reason]);
+  if (caps.available) {
+    smsRows.push(['مجوز ارسال', p ? (PERM_LABEL[p.send] || 'نامشخص') : 'نامشخص']);
+    smsRows.push(['مجوز دریافت', p ? (PERM_LABEL[p.receive] || 'نامشخص') : 'نامشخص']);
+    smsRows.push(['مجوز مخاطبین', p ? (PERM_LABEL[p.contacts] || 'نامشخص') : 'نامشخص']);
+    smsRows.push(['مجوز وضعیت تلفن (سیم‌کارت)', p ? (PERM_LABEL[p.phoneState] || 'نامشخص') : 'نامشخص']);
+    smsRows.push(['سیم‌کارت‌های قابل مشاهده', state.sims.length ? Util.toFa(state.sims.length) : 'هیچ (یا مجوز وضعیت تلفن داده نشده)']);
+  }
+  smsRows.push(['ذخیره‌سازی', Store.persistent ? 'پایدار (IndexedDB)' : 'موقت (پس از بستن از بین می‌رود)']);
+
+  const box = $('sms-detail');
+  box.replaceChildren(dl(smsRows));
+  const miss = missingPerms();
+  if (caps.available && miss && miss.length) {
+    const b = el('button', 'btn btn-ghost btn-block', 'فعال‌سازی مجوزهای پیامک');
+    b.type = 'button';
+    b.onclick = requestMissingPermissions;
+    box.appendChild(b);
+  }
+
+  const info = await SmsBridge.deviceInfo();
+  const rows = [
+    ['پلتفرم', info.platform],
+    ['وضعیت اینترنت', info.online ? 'متصل' : 'قطع'],
+    ['زبان', info.language],
+    ['مرورگر / WebView', info.userAgent]
+  ];
+  Object.keys(info.native || {}).forEach(k => rows.push([k, String(info.native[k])]));
+  $('device-info').replaceChildren(dl(rows));
+}
+
+async function openSettings() {
+  state.convId = null;
+  showScreen('settings');
+  await renderSettings();
+  await renderList();
+}
+
+/* ---------- پاک‌سازی نتایج ناتمام ---------- */
+async function sweepStale() {
+  const limit = Date.now() - 2 * 60 * 1000;
+  const convs = await Store.listConversations();
+  for (const c of convs) {
+    const msgs = await Store.listMessages(c.id);
+    for (const m of msgs) {
+      if (m.direction !== 'out') continue;
+      if (m.status !== 'sending' && m.status !== 'queued') continue;
+      if (sendingIds.has(m.id)) continue;
+      if ((m.attemptedAt || m.createdAt) < limit) {
+        await Store.updateMessage(m.id, {
+          status: 'failed', errorCode: 'TIMEOUT', errorDetail: '', osResult: 'unknown'
+        });
+      }
+    }
+  }
+}
+
+/* ---------- اتصال رویدادهای رابط ---------- */
+function bindUI() {
+  $('btn-new').onclick = openNew;
+  $('btn-settings').onclick = openSettings;
+  $('btn-new-back').onclick = $('btn-new-cancel').onclick = () => { showScreen('empty'); renderList(); };
+  $('btn-settings-back').onclick = () => { showScreen('empty'); renderList(); };
+  $('btn-chat-back').onclick = () => { state.convId = null; showScreen('empty'); renderList(); };
+  $('btn-new-send').onclick = submitNew;
+  $('btn-msg-send').onclick = submitChat;
+  $('perm-status').onclick = () => { const m = missingPerms(); if (m && m.length) requestMissingPermissions(); };
+
+  $('search-input').oninput = e => { state.query = e.target.value; renderList(); };
+  $('new-text').oninput = updateCounter;
+  $('new-phone').oninput = () => { state.pickedName = ''; };
+  $('new-phone').onblur = e => { e.target.value = Util.toEn(e.target.value); };
+
+  const input = $('msg-input');
+  input.oninput = () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+  };
+  input.onkeydown = e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitChat(); }
+  };
+
+  $('sheet-close').onclick = closeSheet;
+  $('sheet').onclick = e => { if (e.target === $('sheet')) closeSheet(); };
+
+  $('btn-chat-delete').onclick = async () => {
+    const conv = await Store.getConversation(state.convId);
+    if (!conv) return;
+    const ok = await confirmDialog('حذف گفتگو', 'گفتگو با ' + displayName(conv) + ' و همهٔ پیام‌هایش از این برنامه حذف می‌شود. پیامک‌های داخل برنامهٔ پیامک گوشی حذف نمی‌شوند.', 'حذف');
+    if (!ok) return;
+    await Store.deleteConversation(conv.id);
+    state.convId = null;
+    showScreen('empty');
+    await renderList();
+    toast('گفتگو حذف شد.');
+  };
+
+  $('btn-chat-clear').onclick = async () => {
+    const conv = await Store.getConversation(state.convId);
+    if (!conv) return;
+    const ok = await confirmDialog('پاک‌کردن پیام‌ها', 'همهٔ پیام‌های این گفتگو پاک می‌شود، اما خود گفتگو باقی می‌ماند.', 'پاک‌کردن');
+    if (!ok) return;
+    await Store.clearMessages(conv.id);
+    await refreshUI();
+    toast('پیام‌ها پاک شدند.');
+  };
+
+  $('btn-clear-all').onclick = async () => {
+    const ok = await confirmDialog('پاک‌کردن همهٔ گفتگوها', 'همهٔ گفتگوها و پیام‌های ذخیره‌شده در این برنامه برای همیشه پاک می‌شود.', 'پاک‌کردن همه');
+    if (!ok) return;
+    await Store.clearAll();
+    state.convId = null;
+    await renderList();
+    toast('همهٔ داده‌ها پاک شدند.');
+  };
+
+  $('btn-pick-contact').onclick = async () => {
+    try {
+      if (SmsBridge.isNative()) {
+        const p = await SmsBridge.checkPermissions();
+        if (!p || p.contacts !== 'granted') {
+          const ok = await confirmDialog(
+            'دسترسی به دفترچهٔ تلفن',
+            'برای انتخاب مخاطب به مجوز خواندن مخاطبین نیاز داریم. فقط هنگام انتخاب مخاطب استفاده می‌شود و فهرست مخاطبین ذخیره یا ارسال نمی‌شود.',
+            'ادامه'
+          );
+          if (!ok) return;
+          const r = await SmsBridge.requestPermissions(['contacts']);
+          if (!r || r.contacts !== 'granted') {
+            toast('بدون مجوز مخاطبین، انتخاب از دفترچه تلفن ممکن نیست.');
+            return;
+          }
+        }
+      }
+      const c = await SmsBridge.pickContact();
+      if (c) {
+        $('new-phone').value = Util.normalizePhone(c.phone);
+        state.pickedName = c.name || '';
+      }
+    } catch (e) {
+      toast('انتخاب مخاطب در این محیط ممکن نیست.');
+    }
+  };
+  if (!SmsBridge.canPickContact()) $('btn-pick-contact').title = 'در این محیط در دسترس نیست';
+}
+
+/* ---------- راه‌اندازی ---------- */
+async function main() {
+  showScreen('empty');
+  bindUI();
+
+  await Store.init();
+  await SmsBridge.init();
+
+  SmsBridge.on('smsSent', async d => {
+    if (!d || !d.id) return;
+    const ok = d.result === 'ok';
+    await Store.updateMessage(d.id, {
+      status: ok ? 'sent' : 'failed',
+      osResult: ok ? 'ok' : 'error',
+      errorCode: ok ? '' : (d.errorCode || 'GENERIC_FAILURE'),
+      errorDetail: ok ? '' : (d.errorDetail || ''),
+      parts: d.parts || 1
+    });
+    if (!ok) toast(SmsBridge.explainError(d.errorCode || 'GENERIC_FAILURE', ''));
+    await refreshUI();
+  });
+
+  SmsBridge.on('smsDelivered', async d => {
+    if (!d || !d.id) return;
+    const m = await Store.getMessage(d.id);
+    if (!m) return;
+    if (d.result === 'ok') {
+      await Store.updateMessage(d.id, { status: 'delivered', deliveredAt: d.timestamp || Date.now() });
+    } else {
+      await Store.updateMessage(d.id, { errorDetail: 'گزارش تحویل ناموفق' });
+    }
+    await refreshUI();
+  });
+
+  SmsBridge.on('smsReceived', handleIncoming);
+
+  await refreshStatus();
+  await loadSims();
+  await sweepStale();
+  await drainIncoming();
+  await renderList();
+
+  if (!Store.persistent) toast('ذخیره‌سازی پایدار در این محیط در دسترس نیست.');
+
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible') {
+      await drainIncoming();
+      await refreshStatus();
+      await refreshUI();
+    }
+  });
+}
+
+main().catch(e => Util.logError('main', e));
+})();
+</script>

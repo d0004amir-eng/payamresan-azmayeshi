@@ -1,0 +1,174 @@
+<script>
+/* =====================================================
+   SmsBridge: تنها نقطهٔ ارتباط رابط کاربری با قابلیت‌های بومی SMS
+
+   اصل مهم: این لایه هیچ نتیجه‌ای را شبیه‌سازی نمی‌کند.
+   - اگر پلاگین بومی "SmsLab" (Capacitor) وجود داشته باشد، همه‌چیز از آن می‌آید.
+   - اگر وجود نداشته باشد (مرورگر، یا APK ساده‌ای که فقط WebView است)،
+     وضعیت «در دسترس نیست» گزارش می‌شود و هر درخواست ارسال با خطا رد می‌شود.
+
+   قرارداد پلاگین بومی (برای مرحلهٔ بعد، نوشتن آن با Kotlin/Java):
+     checkPermissions()            → { send, receive, contacts, phoneState }  هرکدام: 'granted' | 'denied' | 'prompt'
+     requestPermissions({ which }) → همان خروجی بالا
+     getSims()                     → { sims: [{ slot, subscriptionId, label }] }
+     sendSms({ id, phone, text, simSlot })  → { accepted: true }
+     drainReceived()               → { messages: [{ phone, text, timestamp }] }  پیام‌های رسیده در زمان بسته‌بودن رابط
+     pickContact()                 → { phone, name }
+     getDeviceInfo()               → { model, androidVersion, ... }
+     رویدادها:
+       'smsSent'      { id, result: 'ok' | 'error', errorCode, errorDetail, parts }
+       'smsDelivered' { id, result: 'ok' | 'error', timestamp }
+       'smsReceived'  { phone, text, timestamp }
+   ===================================================== */
+const SmsBridge = (() => {
+  const listeners = { smsSent: [], smsDelivered: [], smsReceived: [] };
+  let plugin = null;
+  let platform = 'web';
+  let initialized = false;
+
+  function detect() {
+    const cap = window.Capacitor;
+    if (cap) {
+      try { platform = typeof cap.getPlatform === 'function' ? cap.getPlatform() : 'web'; } catch (e) { platform = 'web'; }
+      const p = cap.Plugins && cap.Plugins.SmsLab;
+      const registered = typeof cap.isPluginAvailable === 'function' ? cap.isPluginAvailable('SmsLab') : !!p;
+      if (p && registered) plugin = p;
+    }
+  }
+
+  async function init() {
+    if (initialized) return;
+    initialized = true;
+    detect();
+    if (!plugin) return;
+    for (const evt of Object.keys(listeners)) {
+      try {
+        await plugin.addListener(evt, data => listeners[evt].forEach(fn => {
+          try { fn(data); } catch (e) { Util.logError('listener-' + evt, e); }
+        }));
+      } catch (e) { Util.logError('addListener-' + evt, e); }
+    }
+  }
+
+  function on(evt, fn) {
+    if (listeners[evt]) listeners[evt].push(fn);
+  }
+
+  function isNative() { return !!plugin; }
+
+  /** وضعیت واقعی قابلیت SMS */
+  function capabilities() {
+    if (plugin) {
+      return { available: true, platform, reason: '' };
+    }
+    if (platform === 'android' || platform === 'ios') {
+      return { available: false, platform, reason: 'برنامه روی گوشی اجرا می‌شود اما پلاگین بومی SMS در آن نصب نشده است.' };
+    }
+    return {
+      available: false, platform: 'web',
+      reason: 'برنامه داخل مرورگر یا WebView ساده اجرا می‌شود. مرورگر اجازهٔ ارسال و دریافت SMS واقعی نمی‌دهد.'
+    };
+  }
+
+  function unavailableError() {
+    const e = new Error('SMS_UNAVAILABLE');
+    e.code = 'UNAVAILABLE';
+    return e;
+  }
+
+  async function checkPermissions() {
+    if (!plugin) return null;
+    try { return await plugin.checkPermissions(); }
+    catch (e) { Util.logError('checkPermissions', e); return null; }
+  }
+
+  async function requestPermissions(which) {
+    if (!plugin) throw unavailableError();
+    return plugin.requestPermissions({ which });
+  }
+
+  async function getSims() {
+    if (!plugin) return [];
+    try {
+      const r = await plugin.getSims();
+      return (r && r.sims) || [];
+    } catch (e) { Util.logError('getSims', e); return []; }
+  }
+
+  /**
+   * ارسال پیامک. تنها نتیجه‌ای که برمی‌گردد «درخواست به سیستم‌عامل داده شد» است.
+   * نتیجهٔ واقعی ارسال بعداً از طریق رویداد 'smsSent' می‌رسد.
+   */
+  async function sendSms({ id, phone, text, simSlot }) {
+    if (!plugin) throw unavailableError();
+    return plugin.sendSms({ id, phone, text, simSlot: simSlot == null ? -1 : simSlot });
+  }
+
+  async function drainReceived() {
+    if (!plugin) return [];
+    try {
+      const r = await plugin.drainReceived();
+      return (r && r.messages) || [];
+    } catch (e) { Util.logError('drainReceived', e); return []; }
+  }
+
+  /** انتخاب مخاطب: ابتدا پلاگین بومی، در غیر این صورت API مرورگر (در صورت پشتیبانی) */
+  async function pickContact() {
+    if (plugin) {
+      const r = await plugin.pickContact();
+      return r && r.phone ? { phone: r.phone, name: r.name || '' } : null;
+    }
+    if (navigator.contacts && typeof navigator.contacts.select === 'function') {
+      const res = await navigator.contacts.select(['name', 'tel'], { multiple: false });
+      if (res && res[0] && res[0].tel && res[0].tel[0]) {
+        return { phone: res[0].tel[0], name: (res[0].name && res[0].name[0]) || '' };
+      }
+      return null;
+    }
+    const e = new Error('CONTACTS_UNAVAILABLE');
+    e.code = 'UNAVAILABLE';
+    throw e;
+  }
+
+  function canPickContact() {
+    return !!plugin || !!(navigator.contacts && typeof navigator.contacts.select === 'function');
+  }
+
+  async function deviceInfo() {
+    let native = {};
+    if (plugin) {
+      try { native = (await plugin.getDeviceInfo()) || {}; } catch (e) { Util.logError('getDeviceInfo', e); }
+    }
+    return {
+      platform,
+      userAgent: navigator.userAgent,
+      language: navigator.language,
+      online: navigator.onLine,
+      native
+    };
+  }
+
+  /** ترجمهٔ کد خطا به پیام قابل‌فهم */
+  function explainError(code, detail) {
+    const map = {
+      UNAVAILABLE: 'قابلیت SMS در این محیط وجود ندارد.',
+      PERMISSION_DENIED: 'مجوز ارسال پیامک داده نشده است.',
+      GENERIC_FAILURE: 'سیستم‌عامل ارسال را ناموفق اعلام کرد (خطای عمومی).',
+      NO_SERVICE: 'گوشی سرویس شبکه (آنتنی) ندارد.',
+      NULL_PDU: 'خطای ساخت پیامک در سیستم‌عامل.',
+      RADIO_OFF: 'رادیوی گوشی خاموش است (حالت پرواز یا مشابه).',
+      NO_SIM: 'سیم‌کارت فعالی پیدا نشد.',
+      SIM_NOT_SELECTED: 'سیم‌کارت فرستنده انتخاب نشده است.',
+      LIMIT_EXCEEDED: 'محدودیت تعداد پیامک سیستم‌عامل فعال شد.',
+      INVALID_NUMBER: 'شمارهٔ گیرنده معتبر نیست.',
+      TIMEOUT: 'پاسخی از سیستم‌عامل دریافت نشد.'
+    };
+    const base = map[code] || 'ارسال ناموفق بود.';
+    return detail ? base + ' (' + detail + ')' : base;
+  }
+
+  return { init, on, isNative, capabilities, checkPermissions, requestPermissions,
+           getSims, sendSms, drainReceived, pickContact, canPickContact,
+           deviceInfo, explainError };
+})();
+</script>

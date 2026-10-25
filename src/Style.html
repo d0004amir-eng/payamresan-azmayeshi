@@ -1,0 +1,348 @@
+<style>
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #eef1f4;
+  --text: #1c2530;
+  --muted: #6b7785;
+  --border: #dde2e8;
+  --primary: #0f766e;
+  --primary-dark: #0b5a54;
+  --on-primary: #ffffff;
+  --bubble-out: #d7efe9;
+  --bubble-in: #ffffff;
+  --danger: #b42318;
+  --danger-bg: #fdecea;
+  --warn: #9a6700;
+  --warn-bg: #fff4d6;
+  --ok: #1a7f4b;
+  --ok-bg: #e3f6ec;
+  --radius: 14px;
+  --shadow: 0 1px 3px rgba(16, 24, 40, .12);
+  --font: Tahoma, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11171d;
+    --surface: #1a222b;
+    --surface-2: #232d38;
+    --text: #e7ecf1;
+    --muted: #93a0ae;
+    --border: #2d3947;
+    --primary: #2dd4bf;
+    --primary-dark: #14b8a6;
+    --on-primary: #06201c;
+    --bubble-out: #14423d;
+    --bubble-in: #232d38;
+    --danger: #ff8a80;
+    --danger-bg: #3a1f1d;
+    --warn: #f5c451;
+    --warn-bg: #3a3017;
+    --ok: #5ddc9a;
+    --ok-bg: #173a2a;
+    --shadow: none;
+  }
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+button, input, textarea, select { font-family: inherit; font-size: inherit; color: inherit; }
+button { cursor: pointer; }
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+
+/* ===== آیکون‌ها ===== */
+.ic { width: 24px; height: 24px; fill: currentColor; flex: none; }
+.ic-sm { width: 18px; height: 18px; }
+.ic-xl { width: 56px; height: 56px; opacity: .35; }
+.flip { transform: scaleX(-1); }
+
+/* ===== چیدمان کلی ===== */
+#app {
+  display: flex;
+  height: 100%;
+  height: 100dvh;
+  max-width: 1200px;
+  margin: 0 auto;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.pane { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+.pane-list { flex: 1; border-inline-end: 1px solid var(--border); position: relative; }
+.pane-main { flex: 1; background: var(--bg); }
+
+/* موبایل: در هر لحظه فقط یک ستون */
+@media (max-width: 899px) {
+  #app[data-view="home"] .pane-main { display: none; }
+  #app:not([data-view="home"]) .pane-list { display: none; }
+}
+
+/* دسکتاپ: دو ستون کنار هم */
+@media (min-width: 900px) {
+  .pane-list { flex: 0 0 380px; }
+  #btn-chat-back, #btn-new-back, #btn-settings-back { display: none; }
+}
+
+/* ===== صفحه‌ها ===== */
+.screen { display: none; flex-direction: column; height: 100%; min-height: 0; }
+.screen.active { display: flex; }
+.screen.empty { align-items: center; justify-content: center; gap: 8px; color: var(--muted); text-align: center; padding: 24px; }
+
+/* ===== نوار بالا ===== */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  background: var(--primary);
+  color: var(--on-primary);
+  flex: none;
+}
+.title { margin: 0; font-size: 17px; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-head { flex: 1; min-width: 0; }
+.chat-head .title { font-size: 16px; direction: ltr; text-align: right; unicode-bidi: plaintext; }
+.chat-head .muted { color: inherit; opacity: .8; }
+
+.icon-btn {
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%;
+  background: transparent; color: inherit;
+}
+.icon-btn:active { background: rgba(255, 255, 255, .18); }
+
+/* ===== نوار وضعیت ===== */
+.status-strip { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px 0; flex: none; }
+.status-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 10px;
+  background: var(--surface-2); color: var(--muted);
+  font-size: 13px;
+}
+.status-item.ok   { background: var(--ok-bg);   color: var(--ok); }
+.status-item.warn { background: var(--warn-bg); color: var(--warn); }
+.status-item.bad  { background: var(--danger-bg); color: var(--danger); }
+
+/* ===== جست‌وجو ===== */
+.search-box {
+  display: flex; align-items: center; gap: 8px;
+  margin: 10px 12px;
+  padding: 0 12px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  color: var(--muted);
+  flex: none;
+}
+.search-box input { flex: 1; border: 0; background: transparent; padding: 10px 0; outline: none; min-width: 0; }
+
+/* ===== فهرست گفتگوها ===== */
+.chat-list { list-style: none; margin: 0; padding: 0 0 90px; overflow-y: auto; flex: 1; }
+.chat-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.chat-item:active, .chat-item.selected { background: var(--surface-2); }
+.avatar {
+  width: 46px; height: 46px; border-radius: 50%;
+  background: var(--primary); color: var(--on-primary);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; flex: none;
+}
+.chat-item-body { flex: 1; min-width: 0; }
+.chat-item-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.chat-item-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; unicode-bidi: plaintext; }
+.chat-item-time { font-size: 12px; color: var(--muted); flex: none; }
+.chat-item-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.chat-item-last { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.badge {
+  min-width: 22px; height: 22px; padding: 0 6px;
+  border-radius: 999px; background: var(--primary); color: var(--on-primary);
+  font-size: 12px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+}
+
+.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 40px 20px; text-align: center; flex: 1; }
+.empty p { margin: 0; }
+
+/* ===== دکمهٔ گفتگوی جدید ===== */
+.fab {
+  position: absolute;
+  inset-inline-start: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 18px;
+  border: 0; border-radius: 999px;
+  background: var(--primary); color: var(--on-primary);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+  font-weight: 700;
+}
+.fab:active { background: var(--primary-dark); }
+
+/* ===== فرم‌ها ===== */
+.form { padding: 16px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; }
+.form label { font-weight: 700; margin-top: 6px; }
+.form h3 { margin: 14px 0 2px; font-size: 15px; }
+.form input, .form textarea, .form select, .composer select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  outline: none;
+}
+.form input:focus, .form textarea:focus, .form select:focus { border-color: var(--primary); }
+.form textarea { resize: vertical; min-height: 110px; }
+.row { display: flex; gap: 8px; align-items: stretch; }
+.row-end { justify-content: flex-end; margin-top: 8px; }
+.row input { flex: 1; min-width: 0; }
+
+.error {
+  padding: 10px 12px; border-radius: 10px;
+  background: var(--danger-bg); color: var(--danger);
+  font-size: 13px;
+}
+
+.card {
+  padding: 12px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border);
+  font-size: 13px;
+}
+.card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; word-break: break-word; }
+
+/* ===== دکمه‌ها ===== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 16px;
+  border: 1px solid transparent; border-radius: 10px;
+  font-weight: 700;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: var(--on-primary); }
+.btn-primary:active { background: var(--primary-dark); }
+.btn-ghost { background: transparent; border-color: var(--border); color: var(--text); }
+.btn-danger { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+.btn-block { width: 100%; margin-top: 8px; }
+
+/* ===== صفحهٔ چت ===== */
+.msg-list {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.date-sep {
+  align-self: center;
+  padding: 2px 12px; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted);
+  font-size: 12px; margin: 6px 0;
+}
+.msg-row { display: flex; flex-direction: column; max-width: 82%; }
+.msg-row.out { align-self: flex-start; }  /* در RTL یعنی سمت راست */
+.msg-row.in  { align-self: flex-end; }    /* در RTL یعنی سمت چپ */
+
+.bubble {
+  padding: 8px 12px;
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+  text-align: start;
+  cursor: pointer;
+  user-select: text;
+}
+.out .bubble { background: var(--bubble-out); border-end-start-radius: 4px; }
+.in  .bubble { background: var(--bubble-in);  border-end-end-radius: 4px; border: 1px solid var(--border); }
+.out.failed .bubble { border: 1px solid var(--danger); }
+
+.bubble-meta {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 2px; padding: 0 4px;
+  font-size: 11px; color: var(--muted);
+}
+.msg-status.ok      { color: var(--ok); }
+.msg-status.pending { color: var(--warn); }
+.msg-status.failed  { color: var(--danger); font-weight: 700; }
+
+/* ===== نوار نوشتن پیام ===== */
+.composer {
+  flex: none;
+  padding: 8px 10px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.composer select { padding: 6px 10px; font-size: 13px; }
+.composer-row { display: flex; align-items: flex-end; gap: 8px; }
+.composer-row textarea {
+  flex: 1; min-width: 0;
+  max-height: 140px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface-2);
+  outline: none; resize: none;
+  unicode-bidi: plaintext;
+}
+.send-btn {
+  width: 44px; height: 44px; flex: none;
+  border: 0; border-radius: 50%;
+  background: var(--primary); color: var(--on-primary);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.send-btn:active { background: var(--primary-dark); }
+
+/* ===== پنجره‌ها ===== */
+.overlay {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0, 0, 0, .45);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.dialog, .sheet {
+  width: 100%; max-width: 420px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.dialog h3 { margin: 0 0 6px; }
+.dialog p { margin: 0 0 8px; color: var(--muted); }
+#sheet { align-items: flex-end; }
+.sheet { border-end-start-radius: 0; border-end-end-radius: 0; max-width: 520px; }
+.sheet-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 12px 8px;
+  border: 0; border-bottom: 1px solid var(--border);
+  background: transparent; text-align: start;
+}
+.sheet-detail { padding: 8px; font-size: 13px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.toast {
+  position: fixed; z-index: 60;
+  inset-inline: 16px;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  margin: 0 auto; max-width: 420px;
+  padding: 10px 14px; border-radius: 10px;
+  background: #1c2530; color: #fff;
+  text-align: center; font-size: 13px;
+}
+</style>

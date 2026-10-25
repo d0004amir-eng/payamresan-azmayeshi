@@ -1,0 +1,299 @@
+<script>
+/* =====================================================
+   Util: توابع کمکی مشترک (اعداد، شماره، تاریخ، شناسه)
+   ===================================================== */
+const Util = {
+  toEn(s) {
+    return String(s == null ? '' : s)
+      .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 1776))
+      .replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 1632));
+  },
+  toFa(s) {
+    return String(s == null ? '' : s).replace(/[0-9]/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+  },
+  /** نرمال‌سازی شماره: ارقام انگلیسی، حذف فاصله و خط تیره، +98 و 0098 به 0 */
+  normalizePhone(raw) {
+    let s = Util.toEn(raw).trim().replace(/[\s\-().]/g, '');
+    if (s.startsWith('0098')) s = '+98' + s.slice(4);
+    if (s.startsWith('+98')) s = '0' + s.slice(3);
+    else if (/^98\d{10}$/.test(s)) s = '0' + s.slice(2);
+    return s;
+  },
+  /** موبایل ایران (09xxxxxxxxx) یا شمارهٔ بین‌المللی ۵ تا ۱۵ رقمی */
+  isValidPhone(p) {
+    return /^09\d{9}$/.test(p) || /^\+?\d{5,15}$/.test(p);
+  },
+  uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  },
+  fnv1a(str) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0).toString(16);
+  },
+  /** کلید یکتا برای جلوگیری از ثبت دوبارهٔ یک پیامک دریافتی */
+  makeDedupeKey(phone, ts, text) {
+    return phone + '|' + ts + '|' + Util.fnv1a(String(text));
+  },
+  formatTime(ts) {
+    return new Intl.DateTimeFormat('fa-IR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tehran' }).format(ts);
+  },
+  formatDate(ts) {
+    return new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Tehran' }).format(ts);
+  },
+  /** کلید روز (ASCII) برای گروه‌بندی پیام‌ها زیر جداکنندهٔ تاریخ */
+  dayKey(ts) {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tehran' }).format(ts);
+  },
+  /** گزارش خطا بدون شماره و متن پیام */
+  logError(context, err) {
+    console.error('[sms-lab]', context, err && (err.name || err.message) ? (err.name || err.message) : 'error');
+  }
+};
+
+/* =====================================================
+   آداپتور سطح پایین: IndexedDB یا حافظهٔ موقت (در صورت نبود IndexedDB)
+   ===================================================== */
+const DB_NAME = 'sms_lab';
+const DB_VERSION = 1;
+const SCHEMA_VERSION = 1;
+
+function reqP(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function openIdbAdapter() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) { reject(new Error('IndexedDB unavailable')); return; }
+    const open = indexedDB.open(DB_NAME, DB_VERSION);
+    open.onupgradeneeded = () => {
+      const db = open.result;
+      const conv = db.createObjectStore('conversations', { keyPath: 'id' });
+      conv.createIndex('phone', 'phone', { unique: true });
+      conv.createIndex('lastMessageAt', 'lastMessageAt');
+      const msg = db.createObjectStore('messages', { keyPath: 'id' });
+      msg.createIndex('conversationId', 'conversationId');
+      msg.createIndex('dedupeKey', 'dedupeKey');
+      msg.createIndex('createdAt', 'createdAt');
+      db.createObjectStore('meta', { keyPath: 'key' });
+    };
+    open.onerror = () => reject(open.error);
+    open.onblocked = () => reject(new Error('IndexedDB blocked'));
+    open.onsuccess = () => {
+      const db = open.result;
+      const store = (name, mode) => db.transaction(name, mode).objectStore(name);
+      resolve({
+        getAll: name => reqP(store(name, 'readonly').getAll()),
+        get: (name, key) => reqP(store(name, 'readonly').get(key)),
+        put: (name, obj) => reqP(store(name, 'readwrite').put(obj)),
+        del: (name, key) => reqP(store(name, 'readwrite').delete(key)),
+        byIndex: (name, index, value) => reqP(store(name, 'readonly').index(index).getAll(value)),
+        clear: name => reqP(store(name, 'readwrite').clear())
+      });
+    };
+  });
+}
+
+function memoryAdapter() {
+  const data = { conversations: new Map(), messages: new Map(), meta: new Map() };
+  const keyField = { conversations: 'id', messages: 'id', meta: 'key' };
+  return {
+    getAll: async name => Array.from(data[name].values()),
+    get: async (name, key) => data[name].get(key),
+    put: async (name, obj) => { data[name].set(obj[keyField[name]], obj); },
+    del: async (name, key) => { data[name].delete(key); },
+    byIndex: async (name, index, value) =>
+      Array.from(data[name].values()).filter(o => o[index] === value),
+    clear: async name => { data[name].clear(); }
+  };
+}
+
+/* =====================================================
+   Store: لایهٔ داده‌ی برنامه
+   همهٔ رکوردها شناسهٔ یکتا (UUID)، updatedAt و syncState دارند
+   تا بعداً بتوان با پایگاه داده مرکزی (رسا) همگام کرد.
+   ===================================================== */
+const Store = (() => {
+  let db = null;
+  let persistent = false;
+  let initError = null;
+
+  async function init() {
+    try {
+      db = await openIdbAdapter();
+      await db.put('meta', { key: 'probe', value: Date.now() });
+      persistent = true;
+    } catch (e) {
+      db = memoryAdapter();
+      persistent = false;
+      initError = (e && e.name) || 'unknown';
+      Util.logError('storage-init', e);
+    }
+    return { persistent, initError };
+  }
+
+  /* ---------- گفتگوها ---------- */
+  async function listConversations() {
+    const all = await db.getAll('conversations');
+    return all.sort((a, b) => (b.lastMessageAt || b.createdAt) - (a.lastMessageAt || a.createdAt));
+  }
+
+  async function getConversation(id) {
+    return db.get('conversations', id);
+  }
+
+  async function getConversationByPhone(phone) {
+    const rows = await db.byIndex('conversations', 'phone', phone);
+    return rows[0] || null;
+  }
+
+  /** اگر گفتگو با این شماره وجود داشته باشد همان را برمی‌گرداند */
+  async function getOrCreateConversation(phone, name) {
+    const existing = await getConversationByPhone(phone);
+    if (existing) return existing;
+    const now = Date.now();
+    const conv = {
+      id: Util.uuid(),
+      phone,
+      name: name || '',
+      createdAt: now,
+      updatedAt: now,
+      lastMessageAt: 0,
+      lastText: '',
+      lastDirection: '',
+      unreadCount: 0,
+      schemaVersion: SCHEMA_VERSION,
+      syncState: 'local'
+    };
+    await db.put('conversations', conv);
+    return conv;
+  }
+
+  async function updateConversation(id, patch) {
+    const conv = await db.get('conversations', id);
+    if (!conv) return null;
+    Object.assign(conv, patch, { updatedAt: Date.now(), syncState: 'local' });
+    await db.put('conversations', conv);
+    return conv;
+  }
+
+  async function deleteConversation(id) {
+    const msgs = await db.byIndex('messages', 'conversationId', id);
+    for (const m of msgs) await db.del('messages', m.id);
+    await db.del('conversations', id);
+  }
+
+  /* ---------- پیام‌ها ---------- */
+  async function listMessages(conversationId) {
+    const rows = await db.byIndex('messages', 'conversationId', conversationId);
+    return rows.sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async function getMessage(id) {
+    return db.get('messages', id);
+  }
+
+  async function findByDedupeKey(key) {
+    const rows = await db.byIndex('messages', 'dedupeKey', key);
+    return rows[0] || null;
+  }
+
+  async function refreshSummary(conversationId) {
+    const msgs = await listMessages(conversationId);
+    const last = msgs[msgs.length - 1];
+    const unread = msgs.filter(m => m.direction === 'in' && !m.readInApp).length;
+    await updateConversation(conversationId, {
+      lastMessageAt: last ? last.createdAt : 0,
+      lastText: last ? last.text : '',
+      lastDirection: last ? last.direction : '',
+      unreadCount: unread
+    });
+  }
+
+  /**
+   * ثبت پیام جدید. ساختار:
+   * { conversationId, direction:'in'|'out', phone, text, createdAt?, status, dedupeKey?, simSlot? }
+   * status: queued | sending | sent | failed | delivered | received
+   */
+  async function addMessage(input) {
+    const now = Date.now();
+    const msg = {
+      id: Util.uuid(),
+      conversationId: input.conversationId,
+      direction: input.direction,
+      phone: input.phone,
+      text: input.text,
+      createdAt: input.createdAt || now,
+      attemptedAt: input.attemptedAt || 0,
+      status: input.status,
+      osResult: input.osResult || '',
+      errorCode: input.errorCode || '',
+      errorDetail: input.errorDetail || '',
+      deliveredAt: 0,
+      parts: input.parts || 1,
+      simSlot: input.simSlot == null ? null : input.simSlot,
+      readInApp: input.direction === 'out',
+      dedupeKey: input.dedupeKey || '',
+      updatedAt: now,
+      schemaVersion: SCHEMA_VERSION,
+      syncState: 'local'
+    };
+    await db.put('messages', msg);
+    await refreshSummary(msg.conversationId);
+    return msg;
+  }
+
+  async function updateMessage(id, patch) {
+    const msg = await db.get('messages', id);
+    if (!msg) return null;
+    Object.assign(msg, patch, { updatedAt: Date.now(), syncState: 'local' });
+    await db.put('messages', msg);
+    await refreshSummary(msg.conversationId);
+    return msg;
+  }
+
+  async function clearMessages(conversationId) {
+    const msgs = await db.byIndex('messages', 'conversationId', conversationId);
+    for (const m of msgs) await db.del('messages', m.id);
+    await refreshSummary(conversationId);
+  }
+
+  /** پیام‌های دریافتی این گفتگو را «دیده‌شده در برنامه» علامت می‌زند (نه خوانده‌شده توسط طرف مقابل) */
+  async function markRead(conversationId) {
+    const msgs = await db.byIndex('messages', 'conversationId', conversationId);
+    let changed = false;
+    for (const m of msgs) {
+      if (m.direction === 'in' && !m.readInApp) {
+        m.readInApp = true;
+        m.updatedAt = Date.now();
+        m.syncState = 'local';
+        await db.put('messages', m);
+        changed = true;
+      }
+    }
+    if (changed) await refreshSummary(conversationId);
+  }
+
+  async function clearAll() {
+    await db.clear('messages');
+    await db.clear('conversations');
+  }
+
+  return {
+    init,
+    get persistent() { return persistent; },
+    get initError() { return initError; },
+    listConversations, getConversation, getConversationByPhone, getOrCreateConversation,
+    updateConversation, deleteConversation,
+    listMessages, getMessage, findByDedupeKey, addMessage, updateMessage,
+    clearMessages, markRead, clearAll
+  };
+})();
+</script>
