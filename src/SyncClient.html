@@ -1,0 +1,106 @@
+<script>
+(() => {
+'use strict';
+const KEY = 'smslab_sync_v1';
+const URL_RE = /^https:\/\/script\.google\.com\/(a\/[^\/]+\/)?macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+
+const SyncCfg = {
+  load() {
+    const d = { enabled: false, url: '', token: '' };
+    try { return Object.assign(d, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { return d; }
+  },
+  save(c) {
+    try { localStorage.setItem(KEY, JSON.stringify(c)); return true; } catch (e) { return false; }
+  },
+  valid(c) { return URL_RE.test(c.url) && c.token.length >= 20; },
+  ready() { const c = this.load(); return !!(c.enabled && this.valid(c)); }
+};
+
+const SyncApi = {
+  async call(action, payload, cfg) {
+    const c = cfg || SyncCfg.load();
+    if (!URL_RE.test(c.url)) throw new Error('bad_url');
+    let res;
+    try {
+      res = await fetch(c.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({}, payload, { action: action, token: c.token })),
+        redirect: 'follow'
+      });
+    } catch (e) { throw new Error('network'); }
+    let data;
+    try { data = await res.json(); } catch (e) { throw new Error('bad_response'); }
+    if (!data || !data.ok) throw new Error((data && data.error) || 'server');
+    return data;
+  },
+  explain(code) {
+    const m = {
+      bad_url: 'آدرس معتبر نیست؛ باید با https://script.google.com شروع و به /exec ختم شود.',
+      network: 'ارتباط با سرور برقرار نشد. اینترنت و آدرس را بررسی کن.',
+      bad_response: 'پاسخ سرور قابل‌فهم نیست. شاید نسخهٔ جدید منتشر نشده یا دسترسی روی Anyone نیست.',
+      unauthorized: 'توکن درست نیست.',
+      busy: 'سرور مشغول است؛ کمی بعد دوباره امتحان کن.'
+    };
+    return m[code] || ('خطای سرور: ' + code);
+  }
+};
+window.SyncCfg = SyncCfg;
+window.SyncApi = SyncApi;
+
+function buildUI() {
+  const form = document.querySelector('#screen-settings .form');
+  if (!form || document.getElementById('sync-card')) return;
+  const c = SyncCfg.load();
+  const wrap = document.createElement('div');
+  wrap.id = 'sync-card';
+  wrap.innerHTML =
+    '<h3>همگام‌سازی با Google Sheets (آزمایشی)</h3>' +
+    '<p class="muted">پیش‌فرض خاموش است. وقتی روشن شود، شمارهٔ گیرنده و متن پیام‌ها در Google Sheet حساب خودت ذخیره می‌شود.</p>' +
+    '<label for="sync-url">آدرس وب‌اپ (پایان با /exec)</label>' +
+    '<input id="sync-url" type="url" dir="ltr" autocomplete="off">' +
+    '<label for="sync-token">توکن</label>' +
+    '<input id="sync-token" type="password" dir="ltr" autocomplete="off">' +
+    '<label style="display:flex;gap:8px;align-items:flex-start;font-weight:400">' +
+    '<input id="sync-enabled" type="checkbox" style="width:auto;flex:none;margin-top:4px">' +
+    '<span>اجازه می‌دهم شمارهٔ گیرنده و متن پیام‌ها در Google Sheet حساب من ذخیره شود.</span></label>' +
+    '<div class="row row-end">' +
+    '<button id="sync-test" class="btn btn-ghost" type="button">آزمایش اتصال</button>' +
+    '<button id="sync-save" class="btn btn-primary" type="button">ذخیره</button></div>' +
+    '<div id="sync-msg" class="muted small"></div>';
+  form.appendChild(wrap);
+
+  const $u = document.getElementById('sync-url');
+  const $t = document.getElementById('sync-token');
+  const $e = document.getElementById('sync-enabled');
+  const $m = document.getElementById('sync-msg');
+  $u.value = c.url;
+  $t.value = c.token;
+  $e.checked = !!c.enabled;
+
+  function read() {
+    return { enabled: $e.checked, url: $u.value.trim(), token: $t.value.trim() };
+  }
+
+  document.getElementById('sync-save').onclick = function () {
+    const n = read();
+    if (n.enabled && !SyncCfg.valid(n)) { $m.textContent = 'برای روشن‌کردن، آدرس و توکن را درست وارد کن.'; return; }
+    $m.textContent = SyncCfg.save(n) ? 'ذخیره شد.' : 'ذخیره انجام نشد؛ حافظهٔ این محیط در دسترس نیست.';
+  };
+
+  document.getElementById('sync-test').onclick = async function () {
+    const n = read();
+    if (!SyncCfg.valid(n)) { $m.textContent = 'اول آدرس و توکن را کامل وارد کن.'; return; }
+    $m.textContent = 'در حال آزمایش...';
+    try {
+      await SyncApi.call('ping', {}, n);
+      $m.textContent = 'اتصال و توکن درست است.';
+    } catch (e) {
+      $m.textContent = SyncApi.explain(e.message);
+    }
+  };
+}
+
+try { buildUI(); } catch (e) { console.error('[sms-lab] sync-ui'); }
+})();
+</script>

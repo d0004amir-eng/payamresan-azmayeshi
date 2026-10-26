@@ -1,0 +1,129 @@
+<script>
+(() => {
+'use strict';
+const SINCE_KEY = 'smslab_sync_since';
+const MAP = { queued: 'queued', claimed: 'sending', sent: 'sent', failed: 'failed', delivered: 'delivered' };
+let busy = false;
+let changed = false;
+
+function since() {
+  try {
+    if (!SyncCfg.ready()) { localStorage.removeItem(SINCE_KEY); return 0; }
+    let v = Number(localStorage.getItem(SINCE_KEY) || 0);
+    if (!v) { v = Date.now(); localStorage.setItem(SINCE_KEY, String(v)); }
+    return v;
+  } catch (e) { return Date.now(); }
+}
+
+/* ---- وب‌اپ: گذاشتن پیام در صف ---- */
+async function enqueue(m) {
+  await Store.updateMessage(m.id, { status: 'sending', syncOrigin: true, errorCode: '', errorDetail: '', attemptedAt: Date.now() });
+  await SmsApp.refreshUI();
+  try {
+    const r = await SyncApi.call('enqueue', { id: m.id, phone: m.phone, text: m.text, simSlot: -1 });
+    await Store.updateMessage(m.id, { status: MAP[r.status] || 'queued' });
+    if (r.duplicate) SmsApp.toast('این پیام قبلاً ثبت شده بود.');
+  } catch (e) {
+    const msg = SyncApi.explain(e.message);
+    await Store.updateMessage(m.id, { status: 'failed', errorCode: 'GENERIC_FAILURE', errorDetail: msg });
+    SmsApp.toast(msg);
+  }
+  await SmsApp.refreshUI();
+}
+
+/* ---- وب‌اپ: خواندن نتیجه‌ها و پیام‌های دریافتی ---- */
+async function pullWeb() {
+  const r = await SyncApi.call('list', {});
+  for (const s of r.messages) {
+    const m = await Store.getMessage(s.id);
+    const st = MAP[s.status];
+    if (!m || !st || m.direction !== 'out' || !m.syncOrigin) continue;
+    const patch = {};
+    if (st !== m.status) patch.status = st;
+    if (s.errorCode && s.errorCode !== m.errorCode) {
+      patch.errorCode = String(s.errorCode);
+      patch.errorDetail = String(s.errorDetail || '');
+    }
+    if (s.deliveredAt && !m.deliveredAt) patch.deliveredAt = Number(s.deliveredAt);
+    if (st === 'sent' || st === 'delivered') patch.osResult = 'ok';
+    if (st === 'failed') patch.osResult = 'error';
+    if (patch.status || patch.errorCode || patch.deliveredAt) {
+      await Store.updateMessage(m.id, patch);
+      changed = true;
+    }
+  }
+  const ib = await SyncApi.call('inboxList', {});
+  for (const x of ib.messages) {
+    await SmsApp.handleIncoming({ phone: x.phone, text: x.text, timestamp: x.receivedAt });
+  }
+}
+
+/* ---- APK: برداشتن پیام‌های صف و ارسال با سیم‌کارت ---- */
+async function claimNative() {
+  const r = await SyncApi.call('claim', { limit: 3 });
+  for (const s of r.messages) {
+    if (await Store.getMessage(s.id)) continue;
+    const phone = Util.normalizePhone(s.phone);
+    const conv = await Store.getOrCreateConversation(phone, '');
+    const m = await Store.addMessage({ id: s.id, conversationId: conv.id, direction: 'out', phone: phone, text: s.text, status: 'queued' });
+    await Store.updateMessage(m.id, { syncOrigin: true });
+    await SmsApp.refreshUI();
+    await SmsApp.attemptSend(m.id);
+  }
+}
+
+/* ---- APK: برگرداندن نتیجهٔ واقعی و فرستادن پیام‌های دریافتی ---- */
+async function pushLocal(sinceTs) {
+  const convs = await Store.listConversations();
+  const reports = [];
+  const inbox = [];
+  for (const c of convs) {
+    for (const m of await Store.listMessages(c.id)) {
+      const done = m.status === 'sent' || m.status === 'failed' || m.status === 'delivered';
+      if (m.direction === 'out' && m.syncOrigin && done && m.reportedStatus !== m.status) reports.push(m);
+      else if (m.direction === 'in' && !m.syncedInbox && m.dedupeKey && m.createdAt >= sinceTs) inbox.push(m);
+    }
+  }
+  for (const m of reports.slice(0, 10)) {
+    try {
+      await SyncApi.call('report', { id: m.id, result: m.status, errorCode: m.errorCode, errorDetail: m.errorDetail, timestamp: m.deliveredAt || 0 });
+    } catch (e) {
+      if (e.message !== 'not_found') throw e;
+    }
+    await Store.updateMessage(m.id, { reportedStatus: m.status });
+  }
+  const batch = inbox.slice(0, 20);
+  if (batch.length) {
+    await SyncApi.call('inboxPush', {
+      messages: batch.map(m => ({ key: m.dedupeKey, receivedAt: m.createdAt, phone: m.phone, text: m.text }))
+    });
+    for (const m of batch) await Store.updateMessage(m.id, { syncedInbox: true });
+  }
+}
+
+async function tick() {
+  if (busy || document.visibilityState !== 'visible') return;
+  if (!window.SmsApp || !SyncCfg.ready()) { since(); return; }
+  busy = true;
+  changed = false;
+  try {
+    const s = since();
+    if (SmsBridge.isNative()) {
+      await claimNative();
+      await pushLocal(s);
+    } else {
+      await pullWeb();
+    }
+    if (changed) await SmsApp.refreshUI();
+  } catch (e) {
+    Util.logError('sync-tick', e);
+  } finally {
+    busy = false;
+  }
+}
+
+setInterval(tick, 8000);
+document.addEventListener('visibilitychange', tick);
+window.SyncEngine = { enqueue: enqueue, tick: tick };
+})();
+</script>

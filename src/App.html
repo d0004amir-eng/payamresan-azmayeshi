@@ -382,6 +382,7 @@ async function attemptSend(id) {
     const m = await Store.getMessage(id);
     if (!m) return;
 
+    if (!SmsBridge.capabilities().available && window.SyncCfg && SyncCfg.ready() && window.SyncEngine) { await SyncEngine.enqueue(m); return; }
     if (!SmsBridge.capabilities().available) { await failMessage(id, 'UNAVAILABLE', ''); return; }
 
     const perm = await ensureSendPermission();
@@ -754,6 +755,7 @@ async function main() {
   });
 }
 
+window.SmsApp = { refreshUI: refreshUI, toast: toast, handleIncoming: handleIncoming, attemptSend: attemptSend };
 main().catch(e => Util.logError('main', e));
 })();
 </script>
